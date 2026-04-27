@@ -6,12 +6,14 @@ A full visual/mechanical refresh of the gravity-flip endless runner.
 Controls:
 - SPACE or Left Click: flip gravity
 - R: restart after game over
+- 0: return to start page
 - ESC: quit
 """
 
 import math
 import os
 import random
+import subprocess
 import sys
 
 import pygame
@@ -82,6 +84,15 @@ def save_high_score(score: int) -> None:
             f.write(str(int(score)))
     except OSError:
         pass
+
+
+def return_to_start_page() -> None:
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    launcher = os.path.join(base_dir, "start_page.py")
+    if os.path.exists(launcher):
+        subprocess.Popen([sys.executable, launcher], cwd=base_dir)
+    pygame.quit()
+    sys.exit()
 
 
 # ---------------------------------------------------------------------------
@@ -452,6 +463,8 @@ class Game:
                     running = False
 
                 if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_0:
+                        return_to_start_page()
                     if event.key == pygame.K_ESCAPE:
                         running = False
                     elif event.key == pygame.K_SPACE:

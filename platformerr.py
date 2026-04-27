@@ -1,6 +1,7 @@
 import json
 import math
 import random
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,6 +14,14 @@ WIDTH, HEIGHT = 1280, 720
 FPS = 60
 GRAVITY = 0.55
 LEADERBOARD_FILE = Path(__file__).with_name("leaderboardMP.json")
+
+
+def return_to_start_page():
+	launcher = Path(__file__).with_name("start_page.py")
+	if launcher.exists():
+		subprocess.Popen([sys.executable, str(launcher)], cwd=str(launcher.parent))
+	pygame.quit()
+	sys.exit()
 
 
 # ---------- Utility ----------
@@ -1070,6 +1079,9 @@ class MathPlatformerGame:
 			if event.type == pygame.QUIT:
 				self.running = False
 				return
+
+			if event.type == pygame.KEYDOWN and event.key == pygame.K_0:
+				return_to_start_page()
 
 			if self.state == "menu":
 				self.update_menu_input(event)

@@ -18,6 +18,7 @@
     DOWN          — Brake
     SPACE         — Turbo boost (burns fuel faster!)
     M             — Toggle Audio Aid (mute/unmute)
+        0             — Return to start page
     ENTER         — Start game / Restart
     ESC           — Quit
 
@@ -55,6 +56,7 @@ import sys
 import math
 import random
 import os
+import subprocess
 import json
 from array import array
 
@@ -256,6 +258,15 @@ def clamp(value, lo, hi):
 def lane_center_x(lane: int) -> float:
     """Return the screen-x centre of a lane (0-based from left)."""
     return ROAD_LEFT + LANE_WIDTH // 2 + lane * LANE_WIDTH
+
+
+def return_to_start_page() -> None:
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    launcher = os.path.join(base_dir, "start_page.py")
+    if os.path.exists(launcher):
+        subprocess.Popen([sys.executable, launcher], cwd=base_dir)
+    pygame.quit()
+    sys.exit()
 
 
 class AudioAid:
@@ -1571,6 +1582,9 @@ class Game:
                     running = False
 
                 if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_0:
+                        return_to_start_page()
+
                     if event.key == pygame.K_m:
                         muted = self.audio.toggle_mute()
                         if not muted:

@@ -15,6 +15,9 @@ GAME_OPTIONS = [
     ("Archer Platformer v2", "APv2.py"),
     ("Bomberman", "bomberman.py"),
     ("Jetpack", "JPJR.py"),
+    ("Gravity Runner", "gravityGuy.py"),
+    ("Pixel Racer", "pixelRacer.py"),
+    ("Mountain Platformer", "platformerr.py"),
     ("Red Remover", "redremover.py"),
     ("Fibonacci Adventure", "breh.py"),
 ]
@@ -73,10 +76,8 @@ def main():
     clock = pygame.time.Clock()
 
     title_font = pygame.font.SysFont("trebuchet ms", 64, bold=True)
-    subtitle_font = pygame.font.SysFont("trebuchet ms", 26, bold=True)
     button_font = pygame.font.SysFont("trebuchet ms", 28, bold=True)
     chip_font = pygame.font.SysFont("trebuchet ms", 19, bold=True)
-    hint_font = pygame.font.SysFont("trebuchet ms", 20)
 
     games = existing_games()
     if not games:
@@ -101,6 +102,11 @@ def main():
         frame += 1
         mouse_pos = pygame.mouse.get_pos()
 
+        button_top = 170
+        button_gap = 10
+        max_button_area = height - 28 - button_top
+        button_h = max(34, min(58, (max_button_area - (len(games) - 1) * button_gap) // len(games)))
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -117,9 +123,6 @@ def main():
                     running = False
 
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                button_top = 190
-                button_h = 58
-                button_gap = 15
                 for i, _ in enumerate(games):
                     rect = pygame.Rect(0, 0, 600, button_h)
                     rect.centerx = width // 2
@@ -147,12 +150,11 @@ def main():
         pygame.draw.rect(screen, (20, 36, 88), hero_rect, border_radius=18)
         pygame.draw.rect(screen, (105, 190, 255), hero_rect, width=2, border_radius=18)
 
-        title = title_font.render("Prototype V1", True, (255, 238, 120))
+        title = title_font.render("CSITE Games", True, (255, 238, 120))
         screen.blit(title, title.get_rect(center=(width // 2, 85)))
 
-        button_top = 190
-        button_h = 58
-        button_gap = 15
+        count_text = chip_font.render(f"{len(games)} games available", True, (189, 218, 255))
+        screen.blit(count_text, count_text.get_rect(center=(width // 2, 126)))
 
         for i, (label, _) in enumerate(games):
             rect = pygame.Rect(0, 0, 600, button_h)
