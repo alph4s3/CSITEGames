@@ -1,30 +1,22 @@
 [
   {
+    "name": "jan",
+    "time": 47.0,
+    "dnf": false
+  },
+  {
     "name": "yes",
-    "score": 3100
+    "time": 53.66,
+    "dnf": false
   },
   {
-    "name": "adadad",
-    "score": 3100
+    "name": "hanne",
+    "time": 60.0,
+    "dnf": false
   },
   {
-    "name": "Hanne",
-    "score": 3080
-  },
-  {
-    "name": "Hanne",
-    "score": 2530
-  },
-  {
-    "name": "charlene",
-    "score": 240
-  },
-  {
-    "name": "loren",
-    "score": 60
-  },
-  {
-    "name": "kenny",
-    "score": 60
+    "name": "yes",
+    "time": 69.58,
+    "dnf": false
   }
 ]

@@ -40,6 +40,27 @@ screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Math Bomberman")
 clock = pygame.time.Clock()
 
+
+def load_player_sprite() -> Optional[pygame.Surface]:
+    """Load the player sprite, trying common filename variants."""
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(base_dir, "griffin.png"),
+        os.path.join(base_dir, "Griffin.png"),
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            try:
+                img = pygame.image.load(path).convert_alpha()
+                size = int(TILE * 0.8)
+                return pygame.transform.smoothscale(img, (size, size))
+            except pygame.error:
+                return None
+    return None
+
+
+PLAYER_SPRITE = load_player_sprite()
+
 # ═══════════════════════════════════════════════════════════════════
 #  COLOR PALETTE
 # ═══════════════════════════════════════════════════════════════════
@@ -121,6 +142,9 @@ EXPLOSION_FRAMES = 16      # how long explosion is visible/dangerous
 PLAYER_BASE_SPEED = 3.0    # pixels per frame (grid-snapping handled separately)
 ENEMY_SPEED      = 1.5
 INVULN_FRAMES    = 90      # i-frames after taking damage
+# Set this based on how the source sprite is drawn at rest.
+# False means the image naturally faces left; True means it naturally faces right.
+PLAYER_SPRITE_POINTS_RIGHT = False
 
 # ═══════════════════════════════════════════════════════════════════
 #  LEADERBOARD (JSON persistence)
@@ -420,7 +444,7 @@ class Enemy:
         self.y = float(self.y)
         self.dir = random.choice([(1, 0), (-1, 0), (0, 1), (0, -1)])
         self.smart = smart  # smart enemies chase the player
-        self.speed = ENEMY_SPEED * (1.3 if smart else 1.0)
+        self.speed = ENEMY_SPEED * (1.45 if smart else 1.0)
         self.alive = True
         self.think_timer = 0
         self.anim_t = 0.0
@@ -438,10 +462,13 @@ class Enemy:
         cx, cy = grid_to_px(gx, gy)
         return cx, cy, gx, gy
 
-    def _next_step_toward(self, level, start_gx, start_gy, target_gx, target_gy):
+    def _next_step_toward(self, level, start_gx, start_gy, target_gx, target_gy,
+                          avoid_cells=None):
         """Return the first (dx, dy) step on a shortest path to target, or None."""
         if (start_gx, start_gy) == (target_gx, target_gy):
             return (0, 0)
+
+        avoid_cells = avoid_cells or set()
 
         q = deque([(start_gx, start_gy)])
         parent = {(start_gx, start_gy): None}
@@ -455,6 +482,8 @@ class Enemy:
                 if (nx, ny) in parent:
                     continue
                 if not (0 <= nx < GRID_W and 0 <= ny < GRID_H):
+                    continue
+                if (nx, ny) != (target_gx, target_gy) and (nx, ny) in avoid_cells:
                     continue
                 # Allow stepping into the player's tile even if occupancy checks differ.
                 if (nx, ny) != (target_gx, target_gy) and not level.passable_for_enemy(nx, ny):
@@ -472,10 +501,46 @@ class Enemy:
             return None
         return (node[0] - start_gx, node[1] - start_gy)
 
-    def update(self, level, player):
+    def _next_step_to_safe(self, level, start_gx, start_gy, danger_cells):
+        """Find first step toward nearest non-danger tile."""
+        if (start_gx, start_gy) not in danger_cells:
+            return (0, 0)
+
+        q = deque([(start_gx, start_gy)])
+        parent = {(start_gx, start_gy): None}
+        goal = None
+
+        while q:
+            x, y = q.popleft()
+            if (x, y) != (start_gx, start_gy) and (x, y) not in danger_cells:
+                goal = (x, y)
+                break
+            for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+                nx, ny = x + dx, y + dy
+                if (nx, ny) in parent:
+                    continue
+                if not (0 <= nx < GRID_W and 0 <= ny < GRID_H):
+                    continue
+                if not level.passable_for_enemy(nx, ny):
+                    continue
+                parent[(nx, ny)] = (x, y)
+                q.append((nx, ny))
+
+        if goal is None:
+            return None
+
+        node = goal
+        while parent[node] is not None and parent[node] != (start_gx, start_gy):
+            node = parent[node]
+        if parent[node] is None:
+            return None
+        return (node[0] - start_gx, node[1] - start_gy)
+
+    def update(self, level, player, danger_cells=None):
         if not self.alive:
             return
         self.anim_t += 0.15
+        danger_cells = danger_cells or set()
 
         cx, cy, gx, gy = self.grid_center()
         # Check if at center of tile
@@ -491,30 +556,42 @@ class Enemy:
                 if 0 <= nx < GRID_W and 0 <= ny < GRID_H:
                     if level.passable_for_enemy(nx, ny):
                         choices.append((dx, dy))
+
+            safe_choices = [
+                (dx, dy) for (dx, dy) in choices
+                if (gx + dx, gy + dy) not in danger_cells
+            ]
+
             if choices:
-                if self.smart and random.random() < 0.6:
-                    # Move toward player
-                    pdx = player.gx - gx
-                    pdy = player.gy - gy
-                    best = None
-                    best_dist = 9999
-                    for dx, dy in choices:
-                        nd = abs((gx + dx) - player.gx) + abs((gy + dy) - player.gy)
-                        if nd < best_dist:
-                            best_dist = nd
-                            best = (dx, dy)
-                    self.dir = best if best else random.choice(choices)
-                else:
-                    # Random walk; prefer to keep going
-                    if self.dir in choices and random.random() < 0.7:
-                        pass
+                # Escape first if current tile is about to explode.
+                if (gx, gy) in danger_cells:
+                    step = self._next_step_to_safe(level, gx, gy, danger_cells)
+                    if step in choices:
+                        self.dir = step
+                    elif safe_choices:
+                        self.dir = random.choice(safe_choices)
                     else:
                         self.dir = random.choice(choices)
-                if self.smart:
-                    # Pac-Man ghost style: chase using shortest available path
+                elif self.smart:
+                    # Smart bots should aggressively chase, only escaping when currently unsafe.
                     step = self._next_step_toward(level, gx, gy, player.gx, player.gy)
                     if step in choices:
                         self.dir = step
+                    elif safe_choices:
+                        best = min(
+                            safe_choices,
+                            key=lambda d: abs((gx + d[0]) - player.gx) + abs((gy + d[1]) - player.gy)
+                        )
+                        self.dir = best
+                    else:
+                        self.dir = random.choice(choices)
+                else:
+                    # Basic bots still roam, but now avoid obvious danger.
+                    roam_choices = safe_choices if safe_choices else choices
+                    if self.dir in roam_choices and random.random() < 0.75:
+                        pass
+                    else:
+                        self.dir = random.choice(roam_choices)
             else:
                 self.dir = (0, 0)
 
@@ -642,6 +719,19 @@ class Player:
             return
         ix, iy = int(self.x), int(self.y)
         bounce = int(abs(math.sin(self.anim_t)) * 2)
+
+        if PLAYER_SPRITE is not None:
+            # Keep a subtle shadow for depth even with sprite rendering.
+            pygame.draw.ellipse(surf, (0, 0, 0, 80), (ix - 16, iy + 14, 32, 6))
+            sprite = PLAYER_SPRITE
+            if self.facing[0] != 0:
+                moving_right = self.facing[0] > 0
+                should_flip = (moving_right != PLAYER_SPRITE_POINTS_RIGHT)
+                if should_flip:
+                    sprite = pygame.transform.flip(PLAYER_SPRITE, True, False)
+            surf.blit(sprite, (ix - sprite.get_width() // 2, iy - sprite.get_height() // 2 - bounce))
+            return
+
         # Body shadow
         pygame.draw.ellipse(surf, (0, 0, 0, 80), (ix - 16, iy + 14, 32, 6))
         # Body
@@ -716,9 +806,23 @@ class Level:
         # Spawn more enemies and make them aggressive path-followers.
         n_enemies = 5 + self.idx * 2
         n_smart = n_enemies
-        empty_positions = [(x, y) for y in range(GRID_H) for x in range(GRID_W)
-                           if self.grid[y][x] == T_EMPTY and (x, y) not in spawn_safe
-                           and abs(x - 1) + abs(y - 1) > 6]
+        empty_positions = []
+        for y in range(GRID_H):
+            for x in range(GRID_W):
+                if self.grid[y][x] != T_EMPTY:
+                    continue
+                if (x, y) in spawn_safe:
+                    continue
+                if abs(x - 1) + abs(y - 1) <= 6:
+                    continue
+                # Avoid trapped enemy spawns: require at least one open neighboring tile.
+                open_neighbors = 0
+                for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+                    nx, ny = x + dx, y + dy
+                    if 0 <= nx < GRID_W and 0 <= ny < GRID_H and self.grid[ny][nx] == T_EMPTY:
+                        open_neighbors += 1
+                if open_neighbors >= 1:
+                    empty_positions.append((x, y))
         random.shuffle(empty_positions)
         for i in range(min(n_enemies, len(empty_positions))):
             pos = empty_positions[i]
@@ -734,6 +838,22 @@ class Level:
 
     def has_bomb_at(self, gx, gy):
         return any(b.gx == gx and b.gy == gy for b in self.bombs)
+
+    def projected_blast_cells(self, gx, gy, range_):
+        """Compute blast cells without mutating the level state."""
+        cells = [(gx, gy)]
+        for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+            for r in range(1, range_ + 1):
+                nx, ny = gx + dx * r, gy + dy * r
+                if not self.in_bounds(nx, ny):
+                    break
+                t = self.tile_at(nx, ny)
+                if t == T_HARD:
+                    break
+                cells.append((nx, ny))
+                if t in (T_SOFT, T_QUESTION, T_ANSWER):
+                    break
+        return cells
 
     def passable_for_player(self, gx, gy, player):
         t = self.tile_at(gx, gy)
@@ -1003,6 +1123,7 @@ class Game:
     WIN        = 5
     NAME_ENTRY = 6
     LB_SCREEN  = 7
+    TUTORIAL   = 8
 
     NUM_LEVELS = 1
 
@@ -1163,9 +1284,21 @@ class Game:
         self.problem_active = False
 
     def _spawn_penalty_enemy(self):
-        empty = [(x, y) for y in range(GRID_H) for x in range(GRID_W)
-                 if self.level.tile_at(x, y) == T_EMPTY
-                 and abs(x - self.player.gx) + abs(y - self.player.gy) > 4]
+        empty = []
+        for y in range(GRID_H):
+            for x in range(GRID_W):
+                if self.level.tile_at(x, y) != T_EMPTY:
+                    continue
+                if abs(x - self.player.gx) + abs(y - self.player.gy) <= 4:
+                    continue
+                # Spawn only where enemy can move immediately.
+                open_neighbors = 0
+                for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+                    nx, ny = x + dx, y + dy
+                    if self.level.in_bounds(nx, ny) and self.level.tile_at(nx, ny) == T_EMPTY:
+                        open_neighbors += 1
+                if open_neighbors >= 1:
+                    empty.append((x, y))
         if not empty:
             return
         gx, gy = random.choice(empty)
@@ -1258,7 +1391,7 @@ class Game:
                 self._go_name_entry(True)
             return
 
-        if self.state in (self.TITLE, self.NAME_ENTRY, self.LB_SCREEN):
+        if self.state in (self.TITLE, self.TUTORIAL, self.NAME_ENTRY, self.LB_SCREEN):
             self._tick_p()
             return
 
@@ -1314,6 +1447,13 @@ class Game:
         for e in self.level.explosions:
             for c in e.cells:
                 all_explosion_cells.add(c)
+
+        # Danger map for AI: active flames + near-future bomb blast zones.
+        danger_cells = set(all_explosion_cells)
+        for b in self.level.bombs:
+            if b.timer <= 40:
+                danger_cells.update(self.level.projected_blast_cells(b.gx, b.gy, b.range))
+
         if (self.player.gx, self.player.gy) in all_explosion_cells:
             self._hurt_player()
             if self.state == self.OVER:
@@ -1329,7 +1469,7 @@ class Game:
 
         # Update enemies
         for en in self.level.enemies:
-            en.update(self.level, self.player)
+            en.update(self.level, self.player, danger_cells)
             if en.hits_player(self.player):
                 self._hurt_player()
                 if self.state == self.OVER:
@@ -1376,10 +1516,17 @@ class Game:
 
         if self.state == self.TITLE:
             if ev.type == pygame.KEYDOWN and ev.key in (pygame.K_RETURN, pygame.K_SPACE):
+                self.state = self.TUTORIAL
+            return True
+
+        if self.state == self.TUTORIAL:
+            if ev.type == pygame.KEYDOWN and ev.key in (pygame.K_RETURN, pygame.K_SPACE):
                 self.score = 0
                 self.lives = 3
                 self.lvl_idx = 0
                 self.start_level()
+            elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_BACKSPACE:
+                self.state = self.TITLE
             return True
 
         if self.state == self.NAME_ENTRY:
@@ -1427,6 +1574,8 @@ class Game:
         screen.fill(HUD_BG)
         if self.state == self.TITLE:
             self._d_title()
+        elif self.state == self.TUTORIAL:
+            self._d_tutorial()
         elif self.state == self.INTRO:
             self._d_intro()
         elif self.state == self.PLAYING:
@@ -1470,6 +1619,52 @@ class Game:
 
         draw_lb_panel(screen, self.title_lb, WIDTH // 2, 240,
                       title="TOP 10 BEST TIMES", pw=420, rh=22)
+
+    # ── TUTORIAL ──
+    def _d_tutorial(self):
+        for y in range(0, HEIGHT, 4):
+            t = y / HEIGHT
+            r = int(13 + t * 20)
+            g = int(12 + t * 13)
+            b = int(24 + t * 28)
+            pygame.draw.line(screen, (r, g, b), (0, y), (WIDTH, y))
+
+        txt_sh(screen, "HOW TO PLAY", FONT_LG, GOLD, 40)
+
+        panel = pygame.Rect(100, 90, WIDTH - 200, HEIGHT - 170)
+        pygame.draw.rect(screen, PANEL_BG, panel, border_radius=10)
+        pygame.draw.rect(screen, PANEL_BORDER, panel, 2, border_radius=10)
+
+        y = 120
+        txt_sh(screen, "Core Goal", FONT_MD, CYAN, y)
+        y += 34
+        txt_c(screen, "Destroy ? blocks, solve math answers, and clear enemies.", FONT_SM, WHITE, y)
+
+        y += 40
+        txt_sh(screen, "Enemy AI", FONT_MD, ORANGE, y)
+        y += 34
+        txt_c(screen, "Smart bots actively chase you and path around walls.", FONT_SM, WHITE, y)
+        y += 26
+        txt_c(screen, "They only run away when a bomb blast is about to hit.", FONT_SM, WHITE, y)
+
+        y += 42
+        txt_sh(screen, "Power-Ups", FONT_MD, GREEN, y)
+        y += 34
+        txt_c(screen, "B+  = Extra bomb capacity (more bombs placed at once)", FONT_SM, WHITE, y)
+        y += 26
+        txt_c(screen, "R+  = Bigger blast range", FONT_SM, WHITE, y)
+        y += 26
+        txt_c(screen, "S+  = Faster movement speed", FONT_SM, WHITE, y)
+
+        y += 42
+        txt_sh(screen, "Controls", FONT_MD, GOLD, y)
+        y += 34
+        txt_c(screen, "Move: Arrow Keys / WASD   |   Bomb: SPACE", FONT_SM, WHITE, y)
+        y += 26
+        txt_c(screen, "Restart level: R   |   Return launcher: 0   |   Quit: ESC", FONT_SM, WHITE, y)
+
+        pulse = int(185 + 60 * math.sin(self.frame * 0.06))
+        txt_c(screen, "Press SPACE to begin", FONT_MD, (pulse, pulse, min(255, pulse + 25)), HEIGHT - 46)
 
     # ── LEVEL INTRO ──
     def _d_intro(self):

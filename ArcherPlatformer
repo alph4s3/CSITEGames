@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
 ╔═══════════════════════════════════════════════════════════════════╗
-║  MATH ARCHER — A Puzzle Platformer for Sharp Minds               ║
+║  MATH ARCHER — A Puzzle Platformer for Sharp Minds                ║
 ║                                                                   ║
 ║  Controls:                                                        ║
-║    A/D  or  Left/Right   Move left / right                       ║
+║    A/D  or  Left/Right   Move left / right                        ║
 ║    SPACE or W or Up      Jump                                     ║
 ║    Mouse                 Aim bow                                  ║
 ║    Hold Left Click       Charge bow — release to shoot            ║
-║    R                     Restart current level                     ║
-║    ESC                   Quit                                      ║
+║    R                     Restart current level                    ║
+║    ESC                   Quit                                     ║
 ║                                                                   ║
 ║  Shoot the target with the CORRECT answer to score points!        ║
-║  Complete all 4 levels to enter your name on the leaderboard.     ║
+║  Clear 15 questions in one run as fast as possible.               ║
 ╚═══════════════════════════════════════════════════════════════════╝
 """
 
@@ -102,13 +102,27 @@ MAX_LB  = 10
 
 
 def load_leaderboard() -> list:
-    """Load leaderboard from JSON. Returns sorted list of {name, score}."""
+    """Load leaderboard from JSON. Returns sorted list of {name, time, dnf}."""
     if os.path.exists(LB_FILE):
         try:
             with open(LB_FILE, "r") as f:
                 data = json.load(f)
             if isinstance(data, list):
-                return sorted(data, key=lambda e: e.get("score", 0), reverse=True)[:MAX_LB]
+                cleaned = []
+                for e in data:
+                    if not isinstance(e, dict):
+                        continue
+                    name = str(e.get("name", "ANON"))[:12]
+                    # Backward-compatible parsing for old score-only entries.
+                    if "time" in e:
+                        t = float(e.get("time", 9999.0))
+                    elif "score" in e:
+                        t = 9999.0
+                    else:
+                        continue
+                    cleaned.append({"name": name, "time": round(t, 2), "dnf": bool(e.get("dnf", False))})
+                cleaned.sort(key=lambda row: (row.get("dnf", False), row.get("time", 9999.0)))
+                return cleaned[:MAX_LB]
         except (json.JSONDecodeError, IOError):
             pass
     return []
@@ -123,12 +137,12 @@ def save_leaderboard(board: list):
         pass
 
 
-def add_to_leaderboard(name: str, score: int) -> Tuple[list, bool]:
+def add_to_leaderboard(name: str, time_sec: float, dnf: bool = False) -> Tuple[list, bool]:
     """Add entry. Returns (updated_board, made_top_10)."""
     board = load_leaderboard()
-    entry = {"name": name, "score": score}
+    entry = {"name": name[:12], "time": round(float(time_sec), 2), "dnf": bool(dnf)}
     board.append(entry)
-    board.sort(key=lambda e: e.get("score", 0), reverse=True)
+    board.sort(key=lambda e: (e.get("dnf", False), e.get("time", 9999.0)))
     board = board[:MAX_LB]
     save_leaderboard(board)
     is_high = entry in board
@@ -232,6 +246,57 @@ def _build_mountain_layer(w, h, base_y, color_lo, color_hi, seed=1, step=70):
     if len(ridge) > 2:
         pygame.draw.lines(layer, (*color_hi, 140), False, ridge, 3)
     return layer
+
+
+def _build_pixel_vibe_overlay(w, h):
+    overlay = pygame.Surface((w, h), pygame.SRCALPHA)
+    # Stronger scanlines and pixel grid for a visible retro feel.
+    for y in range(0, h, 2):
+        pygame.draw.line(overlay, (0, 0, 0, 34), (0, y), (w, y))
+    for y in range(1, h, 4):
+        pygame.draw.line(overlay, (0, 0, 0, 18), (0, y), (w, y))
+    for x in range(0, w, 3):
+        pygame.draw.line(overlay, (0, 0, 0, 8), (x, 0), (x, h))
+    # Highlight speckles in a checker rhythm for a pixel-grid feel.
+    for y in range(0, h, 4):
+        x_start = (y // 4) % 2
+        for x in range(x_start, w, 4):
+            overlay.set_at((x, y), (255, 255, 255, 16))
+    return overlay
+
+
+_PIXEL_VIBE_OVERLAY = _build_pixel_vibe_overlay(WIDTH, HEIGHT)
+
+
+def _build_pixel_tint_overlay(w, h):
+    tint = pygame.Surface((w, h), pygame.SRCALPHA)
+    tint.fill((16, 32, 20, 22))
+    for y in range(0, h, 10):
+        pygame.draw.rect(tint, (0, 35, 12, 18), (0, y, w, 4))
+    return tint
+
+
+def _build_pixel_vignette_overlay(w, h):
+    vig = pygame.Surface((w, h), pygame.SRCALPHA)
+    for i in range(20):
+        alpha = min(95, 10 + i * 5)
+        rect = pygame.Rect(i * 3, i * 2, w - i * 6, h - i * 4)
+        if rect.width <= 0 or rect.height <= 0:
+            break
+        pygame.draw.rect(vig, (0, 0, 0, alpha), rect, width=2)
+    return vig
+
+
+_PIXEL_TINT_OVERLAY = _build_pixel_tint_overlay(WIDTH, HEIGHT)
+_PIXEL_VIGNETTE_OVERLAY = _build_pixel_vignette_overlay(WIDTH, HEIGHT)
+
+
+def apply_pixel_vibe_overlay(surf, frame=0):
+    # Slight drift keeps the texture alive and less static.
+    drift = (frame // 4) % 3 - 1
+    surf.blit(_PIXEL_TINT_OVERLAY, (0, 0))
+    surf.blit(_PIXEL_VIBE_OVERLAY, (drift, 0))
+    surf.blit(_PIXEL_VIGNETTE_OVERLAY, (0, 0))
 
 
 def _build_island_layer(w, h, count=8, seed=9):
@@ -723,10 +788,10 @@ class Player:
 # ═══════════════════════════════════════════════════════════════════
 def gen_problem(difficulty: int):
     types = {
-        1: ['add', 'sub', 'mul', 'fib'],
-        2: ['add', 'sub', 'mul', 'div', 'fib'],
-        3: ['mul', 'div', 'algebra', 'add', 'fib'],
-        4: ['algebra', 'mul', 'div', 'percent', 'algebra', 'fib'],
+        1: ['add', 'sub', 'mul', 'double', 'half', 'fib', 'arith_seq'],
+        2: ['add', 'sub', 'mul', 'div', 'double', 'half', 'percent', 'fib', 'arith_seq'],
+        3: ['mul', 'div', 'algebra', 'add', 'percent', 'square', 'mean', 'fib', 'arith_seq'],
+        4: ['algebra', 'mul', 'div', 'percent', 'square', 'cube', 'mean', 'remainder', 'fib', 'arith_seq'],
     }
     kind = random.choice(types.get(difficulty, types[4]))
     if kind == 'add':
@@ -761,6 +826,35 @@ def gen_problem(difficulty: int):
             seq.append(seq[-1] + seq[-2])
         shown = ", ".join(str(v) for v in seq[-4:])
         return f"Next in Fibonacci: {shown}, ?", seq[-1] + seq[-2]
+    elif kind == 'double':
+        a = random.randint(3 * difficulty, 25 * difficulty)
+        return f"Double of {a} = ?", a * 2
+    elif kind == 'half':
+        ans = random.randint(2 * difficulty, 20 * difficulty)
+        return f"Half of {ans * 2} = ?", ans
+    elif kind == 'square':
+        a = random.randint(2, 4 + difficulty * 2)
+        return f"{a}^2 = ?", a * a
+    elif kind == 'cube':
+        a = random.randint(2, 2 + difficulty)
+        return f"{a}^3 = ?", a * a * a
+    elif kind == 'mean':
+        a = random.randint(6, 20 + difficulty * 4)
+        b = random.randint(6, 20 + difficulty * 4)
+        if (a + b) % 2 == 1:
+            b += 1
+        return f"Mean of {a} and {b} = ?", (a + b) // 2
+    elif kind == 'remainder':
+        divisor = random.randint(3, 4 + difficulty)
+        quotient = random.randint(2, 4 + difficulty)
+        rem = random.randint(1, divisor - 1)
+        n = divisor * quotient + rem
+        return f"Remainder: {n} mod {divisor} = ?", rem
+    elif kind == 'arith_seq':
+        start = random.randint(1, 10 + difficulty * 2)
+        step = random.randint(2, 3 + difficulty)
+        seq = [start + i * step for i in range(4)]
+        return f"Next in sequence: {seq[0]}, {seq[1]}, {seq[2]}, {seq[3]}, ?", seq[3] + step
     a, b = random.randint(5, 25), random.randint(5, 25)
     return f"{a} + {b} = ?", a + b
 
@@ -797,46 +891,9 @@ LEVELS = [
                       Platform(200, 260, 130, 14), Platform(660, 220, 140, 14)],
         'zones': [(180, 380), (400, 330), (640, 280), (260, 220), (730, 180), (850, 360)],
     },
-    {
-        'name': 'Shifting Ruins', 'difficulty': 2, 'n_problems': 4,
-        'wind': 0.0, 'moving_targets': False, 'spawn': (50, HEIGHT - 80),
-        'platforms': [gnd(), Platform(80, 430, 130, 14),
-                      Platform(270, 370, 120, 14, moving=True, move_range=70, move_speed=1.3),
-                      Platform(470, 310, 140, 14), Platform(670, 390, 110, 14),
-                      Platform(350, 220, 130, 14, moving=True, move_range=60, move_speed=1.0),
-                      Platform(140, 260, 110, 14), Platform(800, 260, 120, 14)],
-        'zones': [(140, 390), (330, 330), (530, 270), (730, 350),
-                  (210, 220), (420, 180), (870, 220)],
-    },
-    {
-        'name': 'Windy Canyon', 'difficulty': 3, 'n_problems': 4,
-        'wind': 0.035, 'moving_targets': True, 'spawn': (50, HEIGHT - 80),
-        'platforms': [gnd(), Platform(50, 420, 110, 14),
-                      Platform(220, 360, 100, 14, moving=True, move_range=55, move_speed=1.5),
-                      Platform(420, 300, 120, 14),
-                      Platform(620, 380, 100, 14, moving=True, axis='y', move_range=40, move_speed=1.2),
-                      Platform(800, 260, 120, 14),
-                      Platform(300, 200, 110, 14, moving=True, move_range=65, move_speed=0.9),
-                      Platform(100, 250, 100, 14), Platform(600, 180, 100, 14)],
-        'zones': [(110, 380), (280, 320), (480, 260), (680, 340),
-                  (860, 220), (370, 160), (160, 210), (660, 140)],
-    },
-    {
-        'name': 'Storm Summit', 'difficulty': 4, 'n_problems': 4,
-        'wind': 0.055, 'moving_targets': True, 'spawn': (40, HEIGHT - 80),
-        'platforms': [gnd(), Platform(30, 440, 90, 14),
-                      Platform(170, 380, 80, 14, moving=True, move_range=50, move_speed=2.0),
-                      Platform(340, 320, 90, 14),
-                      Platform(500, 270, 80, 14, moving=True, move_range=55, move_speed=1.6),
-                      Platform(660, 360, 80, 14),
-                      Platform(810, 240, 80, 14, moving=True, move_range=45, move_speed=1.8),
-                      Platform(200, 230, 90, 14),
-                      Platform(430, 170, 100, 14, moving=True, move_range=60, move_speed=1.1),
-                      Platform(680, 160, 80, 14)],
-        'zones': [(80, 400), (230, 340), (390, 280), (550, 230), (720, 320),
-                  (870, 200), (260, 190), (490, 130), (740, 120)],
-    },
 ]
+# Single-level time trial with 15 questions.
+LEVELS[0]['n_problems'] = 15
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -907,7 +964,7 @@ def draw_lb_panel(surf, board, cx, top_y, title="TOP 10 SCORES",
         return
 
     # Column headers
-    for text, xoff in [("#", 14), ("NAME", 50), ("SCORE", pw - 80)]:
+    for text, xoff in [("#", 14), ("NAME", 50), ("TIME", pw - 110)]:
         ct = FONT_XS.render(text, True, GREY)
         surf.blit(ct, (px + xoff, ry))
     ry += col_hdr_h
@@ -915,7 +972,8 @@ def draw_lb_panel(surf, board, cx, top_y, title="TOP 10 SCORES",
     rank_colors = [GOLD, (200, 200, 210), ORANGE]
     for i, entry in enumerate(board):
         name = entry.get("name", "???")
-        score = entry.get("score", 0)
+        score = float(entry.get("time", 9999.0))
+        is_dnf = bool(entry.get("dnf", False))
         is_hl = (hl_name and hl_score is not None
                  and name == hl_name and score == hl_score)
         if is_hl:
@@ -927,7 +985,8 @@ def draw_lb_panel(surf, board, cx, top_y, title="TOP 10 SCORES",
         for text, col, xoff in [(f"{i+1}.", rc, 14), (name[:12], nc, 50)]:
             rt = FONT_LB.render(text, True, col)
             surf.blit(rt, (px + xoff, ry))
-        st = FONT_LB.render(str(score), True, sc_c)
+        score_text = "DNF" if is_dnf else f"{score:.2f}s"
+        st = FONT_LB.render(score_text, True, sc_c)
         surf.blit(st, (px + pw - 16 - st.get_width(), ry))
         ry += rh
 
@@ -948,6 +1007,9 @@ class Game:
     def __init__(self):
         self.state = self.TITLE
         self.score = 0
+        self.time_penalty_ms = 0
+        self.level_start_ticks = 0
+        self.elapsed_ms = 0
         self.lives = 3
         self.lvl = 0
         self.player: Optional[Player] = None
@@ -968,6 +1030,8 @@ class Game:
         self.name_input = ""
         self.name_max = 12
         self.final_score = 0
+        self.final_time = 0.0
+        self.final_dnf = False
         self.came_from_win = False
         self.lb_board: list = []
         self.lb_is_high = False
@@ -988,6 +1052,9 @@ class Game:
         self.targets.clear()
         self.solved = 0
         self.n_prob = lv['n_problems']
+        self.time_penalty_ms = 0
+        self.elapsed_ms = 0
+        self.level_start_ticks = pygame.time.get_ticks()
         g_parts.clear()
         self._next_q()
 
@@ -1020,12 +1087,14 @@ class Game:
     def _go_name_entry(self, from_win):
         self.state = self.NAME_ENTRY
         self.final_score = self.score
+        self.final_time = self.elapsed_ms / 1000.0
+        self.final_dnf = not from_win
         self.came_from_win = from_win
         self.name_input = ""
 
     def _submit_name(self):
         name = self.name_input.strip() or "ANON"
-        self.lb_board, self.lb_is_high = add_to_leaderboard(name, self.final_score)
+        self.lb_board, self.lb_is_high = add_to_leaderboard(name, self.final_time, self.final_dnf)
         self.state = self.LB_SCREEN
 
     # ─── UPDATE ──────────────────────────────────────────────
@@ -1081,6 +1150,7 @@ class Game:
         # ── PLAYING ──
         keys = pygame.key.get_pressed()
         lv = LEVELS[self.lvl]
+        self.elapsed_ms = pygame.time.get_ticks() - self.level_start_ticks + self.time_penalty_ms
         for pl in lv['platforms']:
             pl.update()
         self.player.update(keys, lv['platforms'])
@@ -1097,16 +1167,15 @@ class Game:
                         tgt.hit_anim = 25
                         emit(tgt.x, tgt.y, GOLD, n=20, speed=5, life=30, size=3.5)
                         if tgt.correct:
-                            self.score += 100
                             self.solved += 1
-                            self.flash("+100", GREEN, 60)
+                            self.flash("CORRECT!", GREEN, 60)
                             emit_text(tgt.x, tgt.y - 20, "CORRECT!", GREEN)
                             sfx(SFX_OK)
                         else:
-                            self.score = max(0, self.score - 20)
+                            self.time_penalty_ms += 3000
                             self.player.slow_timer = 90
                             self.shake.trigger(16, 7)
-                            self.flash("-20  WRONG!", RED, 60)
+                            self.flash("+3s  WRONG!", RED, 60)
                             emit_text(tgt.x, tgt.y - 20, "WRONG", RED)
                             emit(tgt.x, tgt.y, RED, n=12, speed=4, life=22)
                             sfx(SFX_BAD)
@@ -1124,9 +1193,7 @@ class Game:
             if self.solved >= self.n_prob:
                 self.state = self.LEVEL_DONE
                 self.done_t = 150
-                bonus = 150 * lv['difficulty']
-                self.score += bonus
-                self.flash(f"Level bonus +{bonus}", GOLD, 100)
+                self.flash("TIME TRIAL COMPLETE!", GOLD, 100)
                 sfx(SFX_LVL)
             else:
                 self._next_q()
@@ -1215,7 +1282,6 @@ class Game:
             self.NAME_ENTRY: self._d_name,
             self.LB_SCREEN:  self._d_lb,
         }.get(self.state, lambda: None)()
-        pygame.display.flip()
 
     def _d_title(self):
         txt_sh(screen, "MATH ARCHER", FONT_XL, GOLD, 65)
@@ -1243,7 +1309,7 @@ class Game:
         txt_c(screen, "A/D: Move | SPACE: Jump | Click: Shoot", FONT_XS, GREY, 193)
         # Leaderboard
         draw_lb_panel(screen, self.title_lb, WIDTH // 2, 215,
-                      title="TOP 10 SCORES", pw=360, rh=22)
+                      title="TOP 10 TIMES", pw=380, rh=22)
 
     def _d_intro(self):
         lv = LEVELS[self.lvl]
@@ -1251,7 +1317,7 @@ class Game:
         txt_sh(screen, lv['name'], FONT_MD, WHITE, 220)
         stars = "* " * lv['difficulty'] + ". " * (4 - lv['difficulty'])
         txt_c(screen, f"Difficulty: {stars.strip()}", FONT_SM, ORANGE, 265)
-        txt_c(screen, f"Problems: {lv['n_problems']}", FONT_SM, GREY, 293)
+        txt_c(screen, f"Questions: {lv['n_problems']}", FONT_SM, GREY, 293)
         if lv['wind'] > 0:
             txt_c(screen, "Wind active!", FONT_SM, CYAN, 323)
         if lv.get('moving_targets'):
@@ -1285,6 +1351,7 @@ class Game:
                                   [(wx, wy - 4), (wx + 6, wy), (wx, wy + 4)], 2)
             wt = FONT_XS.render("WIND", True, (120, 150, 255))
             gs.blit(wt, (WIDTH - 175, wy - 8))
+        apply_pixel_vibe_overlay(gs, self.frame)
         screen.blit(gs, (sx, sy))
         self._d_hud()
 
@@ -1293,9 +1360,9 @@ class Game:
         hud.fill((8, 8, 16, 200))
         screen.blit(hud, (0, 0))
         txt_c(screen, self.question, FONT_MD, GOLD, 27)
-        st = FONT_HUD.render(f"Score: {self.score}", True, WHITE)
+        st = FONT_HUD.render(f"Time: {self.elapsed_ms / 1000.0:.2f}s", True, WHITE)
         screen.blit(st, (14, 6))
-        lt = FONT_XS.render(f"Lvl {self.lvl + 1}", True, GREY)
+        lt = FONT_XS.render(f"Question Set: {self.n_prob}", True, GREY)
         screen.blit(lt, (14, 30))
         pt = FONT_HUD.render(f"{self.solved}/{self.n_prob}", True, WHITE)
         screen.blit(pt, (WIDTH - 55, 6))
@@ -1315,9 +1382,8 @@ class Game:
 
     def _d_lvl_done(self):
         txt_sh(screen, "LEVEL COMPLETE!", FONT_LG, GREEN, 180)
-        lv = LEVELS[self.lvl]
-        txt_sh(screen, f"Bonus: +{150 * lv['difficulty']}", FONT_MD, GOLD, 240)
-        txt_sh(screen, f"Score: {self.score}", FONT_MD, WHITE, 280)
+        txt_sh(screen, f"Final Time: {self.elapsed_ms / 1000.0:.2f}s", FONT_MD, WHITE, 240)
+        txt_sh(screen, "Single-level 15-question run complete", FONT_XS, GREY, 280)
         for i in range(self.lives):
             draw_star(screen, WIDTH // 2 - self.lives * 18 + i * 36 + 18, 340, 14, GOLD)
         for p in g_parts:
@@ -1325,7 +1391,7 @@ class Game:
 
     def _d_over(self):
         txt_sh(screen, "GAME OVER", FONT_LG, RED, 180)
-        txt_sh(screen, f"Final Score: {self.score}", FONT_MD, WHITE, 240)
+        txt_sh(screen, f"Time: {self.elapsed_ms / 1000.0:.2f}s  (DNF)", FONT_MD, WHITE, 240)
         lv = LEVELS[min(self.lvl, len(LEVELS) - 1)]
         txt_c(screen, f"Reached: Level {self.lvl + 1} - {lv['name']}", FONT_SM, GREY, 290)
         secs = max(1, self.show_timer // 60 + 1)
@@ -1333,7 +1399,7 @@ class Game:
 
     def _d_win(self):
         txt_sh(screen, "YOU WIN!", FONT_XL, GOLD, 150)
-        txt_sh(screen, f"Final Score: {self.score}", FONT_LG, WHITE, 230)
+        txt_sh(screen, f"Final Time: {self.elapsed_ms / 1000.0:.2f}s", FONT_LG, WHITE, 230)
         for i in range(5):
             draw_star(screen, WIDTH // 2 - 100 + i * 50, 295, 16, GOLD)
         txt_sh(screen, "Math Master!", FONT_MD, GREEN, 345)
@@ -1347,7 +1413,10 @@ class Game:
             txt_sh(screen, "CONGRATULATIONS!", FONT_LG, GOLD, 80)
         else:
             txt_sh(screen, "GAME OVER", FONT_LG, RED, 80)
-        txt_sh(screen, f"Score: {self.final_score}", FONT_MD, WHITE, 130)
+        if self.final_dnf:
+            txt_sh(screen, f"Time: {self.final_time:.2f}s (DNF)", FONT_MD, WHITE, 130)
+        else:
+            txt_sh(screen, f"Time: {self.final_time:.2f}s", FONT_MD, WHITE, 130)
         txt_sh(screen, "Enter Your Name:", FONT_MD, CYAN, 190)
         # Input box
         bw, bh = 340, 50
@@ -1370,19 +1439,22 @@ class Game:
 
     def _d_lb(self):
         if self.came_from_win:
-            txt_sh(screen, "ALL LEVELS CLEARED!", FONT_LG, GOLD, 48)
+            txt_sh(screen, "TIME TRIAL COMPLETE!", FONT_LG, GOLD, 48)
         else:
             txt_sh(screen, "FINAL RESULTS", FONT_LG, CYAN, 48)
-        txt_sh(screen, f"Score: {self.final_score}", FONT_MD, WHITE, 88)
+        if self.final_dnf:
+            txt_sh(screen, f"Time: {self.final_time:.2f}s (DNF)", FONT_MD, WHITE, 88)
+        else:
+            txt_sh(screen, f"Time: {self.final_time:.2f}s", FONT_MD, WHITE, 88)
         if self.lb_is_high:
             t = self.frame * 0.08
             r = int(200 + 55 * math.sin(t))
             g = int(200 + 55 * math.sin(t + 2))
             b = int(200 + 55 * math.sin(t + 4))
-            txt_sh(screen, "NEW HIGH SCORE!", FONT_MD, (r, g, b), 120)
+            txt_sh(screen, "NEW BEST TIME!", FONT_MD, (r, g, b), 120)
         hl_name = self.name_input.strip() or "ANON"
         draw_lb_panel(screen, self.lb_board, WIDTH // 2, 145,
-                      title="LEADERBOARD", hl_name=hl_name, hl_score=self.final_score,
+                      title="LEADERBOARD", hl_name=hl_name, hl_score=round(self.final_time, 2),
                       pw=400, rh=24)
         pulse = int(180 + 60 * math.sin(self.frame * 0.05))
         txt_c(screen, "Press SPACE or ENTER for menu", FONT_SM,
@@ -1401,15 +1473,6 @@ def return_to_launcher():
     sys.exit()
 
 
-def draw_menu_button(surface, rect):
-    hovered = rect.collidepoint(pygame.mouse.get_pos())
-    fill = (32, 75, 155) if not hovered else (57, 112, 205)
-    pygame.draw.rect(surface, fill, rect, border_radius=8)
-    pygame.draw.rect(surface, (210, 235, 255), rect, width=2, border_radius=8)
-    font = pygame.font.SysFont("consolas", 18, bold=True)
-    txt = font.render("Menu", True, (245, 245, 245))
-    surface.blit(txt, txt.get_rect(center=rect.center))
-
 
 def main():
     game = Game()
@@ -1425,7 +1488,7 @@ def main():
                 running = False
         game.update()
         game.draw()
-        draw_menu_button(screen, menu_btn)
+        pygame.display.flip()
         clock.tick(FPS)
     pygame.quit()
     sys.exit()

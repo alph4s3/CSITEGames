@@ -12,7 +12,6 @@ BASE_DIR = Path(__file__).resolve().parent
 # Label, file path (relative to BASE_DIR)
 GAME_OPTIONS = [
     ("Archer Platformer", "ArcherPlatformer"),
-    ("Archer Platformer v2", "APv2.py"),
     ("Bomberman", "bomberman.py"),
     ("Jetpack", "JPJR.py"),
     ("Gravity Runner", "gravityGuy.py"),
@@ -71,13 +70,16 @@ def main():
     pygame.init()
     pygame.display.set_caption("CSITE Games - Select a Game")
 
-    width, height = 980, 620
+    width, height = 1120, 700
     screen = pygame.display.set_mode((width, height))
     clock = pygame.time.Clock()
 
-    title_font = pygame.font.SysFont("trebuchet ms", 64, bold=True)
-    button_font = pygame.font.SysFont("trebuchet ms", 28, bold=True)
-    chip_font = pygame.font.SysFont("trebuchet ms", 19, bold=True)
+    title_font = pygame.font.SysFont("rockwell", 62, bold=True)
+    subtitle_font = pygame.font.SysFont("rockwell", 24, bold=True)
+    card_font = pygame.font.SysFont("trebuchet ms", 30, bold=True)
+    body_font = pygame.font.SysFont("trebuchet ms", 20)
+    chip_font = pygame.font.SysFont("trebuchet ms", 18, bold=True)
+    hint_font = pygame.font.SysFont("consolas", 17, bold=True)
 
     games = existing_games()
     if not games:
@@ -97,15 +99,30 @@ def main():
     selected_index = 0
     running = True
     frame = 0
+    cols = 2
 
     while running:
         frame += 1
         mouse_pos = pygame.mouse.get_pos()
 
-        button_top = 170
-        button_gap = 10
-        max_button_area = height - 28 - button_top
-        button_h = max(34, min(58, (max_button_area - (len(games) - 1) * button_gap) // len(games)))
+        grid_left = 420
+        grid_top = 170
+        grid_right_margin = 48
+        grid_bottom_margin = 86
+        grid_gap = 16
+        rows = max(1, math.ceil(len(games) / cols))
+        grid_width = width - grid_left - grid_right_margin
+        grid_height = height - grid_top - grid_bottom_margin
+        card_w = (grid_width - grid_gap * (cols - 1)) // cols
+        card_h = (grid_height - grid_gap * (rows - 1)) // rows
+
+        card_rects = []
+        for i in range(len(games)):
+            row = i // cols
+            col = i % cols
+            x = grid_left + col * (card_w + grid_gap)
+            y = grid_top + row * (card_h + grid_gap)
+            card_rects.append(pygame.Rect(x, y, card_w, card_h))
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -113,8 +130,12 @@ def main():
 
             elif event.type == pygame.KEYDOWN:
                 if event.key in (pygame.K_UP, pygame.K_w):
-                    selected_index = (selected_index - 1) % len(games)
+                    selected_index = (selected_index - cols) % len(games)
                 elif event.key in (pygame.K_DOWN, pygame.K_s):
+                    selected_index = (selected_index + cols) % len(games)
+                elif event.key in (pygame.K_LEFT, pygame.K_a):
+                    selected_index = (selected_index - 1) % len(games)
+                elif event.key in (pygame.K_RIGHT, pygame.K_d):
                     selected_index = (selected_index + 1) % len(games)
                 elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                     launch_game(games[selected_index][1])
@@ -123,16 +144,20 @@ def main():
                     running = False
 
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                for i, _ in enumerate(games):
-                    rect = pygame.Rect(0, 0, 600, button_h)
-                    rect.centerx = width // 2
-                    rect.y = button_top + i * (button_h + button_gap)
+                for i, rect in enumerate(card_rects):
                     if rect.collidepoint(event.pos):
+                        selected_index = i
                         launch_game(games[i][1])
                         running = False
                         break
 
-        draw_vertical_gradient(screen, (9, 20, 46), (13, 10, 32))
+        draw_vertical_gradient(screen, (11, 30, 56), (19, 12, 30))
+
+        # Animated aurora bands for a more distinctive background.
+        for i in range(4):
+            y = int(height * (0.25 + i * 0.18) + math.sin(frame * 0.012 + i * 1.9) * 24)
+            col = (35 + i * 12, 70 + i * 18, 120 + i * 22)
+            pygame.draw.ellipse(screen, (*col, 40), (-180, y - 70, width + 360, 140), width=0)
 
         for star in stars:
             star["x"] -= star["spd"]
@@ -141,57 +166,88 @@ def main():
                 star["y"] = random.uniform(0, height)
             pulse = 0.6 + 0.4 * math.sin(frame * 0.03 + star["phase"])
             radius = int(star["r"] * (0.9 + 0.4 * pulse))
-            glow_circle(screen, (int(star["x"]), int(star["y"])), radius + 3, (100, 170, 255), 50)
+            glow_circle(screen, (int(star["x"]), int(star["y"])), radius + 3, (80, 210, 255), 48)
             pygame.draw.circle(screen, (220, 245, 255), (int(star["x"]), int(star["y"])), max(1, radius))
 
-        hero_rect = pygame.Rect(0, 0, 760, 120)
-        hero_rect.centerx = width // 2
-        hero_rect.y = 34
-        pygame.draw.rect(screen, (20, 36, 88), hero_rect, border_radius=18)
-        pygame.draw.rect(screen, (105, 190, 255), hero_rect, width=2, border_radius=18)
+        # Left rail with title and launch details.
+        rail = pygame.Rect(34, 34, 350, height - 68)
+        pygame.draw.rect(screen, (14, 25, 48), rail, border_radius=24)
+        pygame.draw.rect(screen, (82, 166, 233), rail, width=2, border_radius=24)
 
-        title = title_font.render("CSITE Games", True, (255, 238, 120))
-        screen.blit(title, title.get_rect(center=(width // 2, 85)))
+        title = title_font.render("CSITE", True, (254, 225, 122))
+        screen.blit(title, title.get_rect(midtop=(rail.centerx, 58)))
+        subtitle = subtitle_font.render("Games Launcher", True, (186, 223, 245))
+        screen.blit(subtitle, subtitle.get_rect(midtop=(rail.centerx, 122)))
 
-        count_text = chip_font.render(f"{len(games)} games available", True, (189, 218, 255))
-        screen.blit(count_text, count_text.get_rect(center=(width // 2, 126)))
+        count_chip = pygame.Rect(0, 0, 220, 38)
+        count_chip.center = (rail.centerx, 176)
+        pygame.draw.rect(screen, (24, 44, 78), count_chip, border_radius=12)
+        pygame.draw.rect(screen, (115, 191, 250), count_chip, width=1, border_radius=12)
+        count_text = chip_font.render(f"{len(games)} games ready", True, (235, 246, 255))
+        screen.blit(count_text, count_text.get_rect(center=count_chip.center))
+
+        selected_label, selected_path = games[selected_index]
+        info_box = pygame.Rect(56, 228, 306, 342)
+        pygame.draw.rect(screen, (20, 35, 65), info_box, border_radius=14)
+        pygame.draw.rect(screen, (88, 152, 220), info_box, width=1, border_radius=14)
+        sel_title = subtitle_font.render("Now Selected", True, (123, 221, 255))
+        screen.blit(sel_title, (info_box.x + 16, info_box.y + 16))
+        sel_name = card_font.render(selected_label, True, (255, 246, 208))
+        screen.blit(sel_name, (info_box.x + 16, info_box.y + 58))
+
+        path_label = body_font.render("File:", True, (180, 214, 240))
+        screen.blit(path_label, (info_box.x + 16, info_box.y + 118))
+        path_text = chip_font.render(str(selected_path.name), True, (255, 255, 255))
+        screen.blit(path_text, (info_box.x + 16, info_box.y + 146))
+
+        tip_lines = [
+            "Arrow keys or WASD to move",
+            "Enter to launch",
+            "Mouse click any card",
+            "Esc to quit launcher",
+        ]
+        ty = info_box.y + 188
+        for line in tip_lines:
+            t = body_font.render(f"- {line}", True, (197, 223, 245))
+            screen.blit(t, (info_box.x + 16, ty))
+            ty += 28
 
         for i, (label, _) in enumerate(games):
-            rect = pygame.Rect(0, 0, 600, button_h)
-            rect.centerx = width // 2
-            rect.y = button_top + i * (button_h + button_gap)
+            rect = card_rects[i]
 
             is_hovered = rect.collidepoint(mouse_pos)
             is_selected = i == selected_index
             accent = accent_colors[i % len(accent_colors)]
 
             if is_selected:
-                fill = (34, 84, 170)
-                border = (240, 248, 255)
+                fill = (42, 88, 130)
+                border = (245, 250, 255)
             elif is_hovered:
-                fill = (28, 68, 145)
-                border = (188, 229, 255)
+                fill = (34, 72, 112)
+                border = (200, 234, 255)
             else:
-                fill = (22, 47, 108)
-                border = (79, 129, 204)
+                fill = (26, 54, 88)
+                border = (97, 145, 205)
 
-            shadow = rect.move(0, 4)
+            shadow = rect.move(0, 5)
             pygame.draw.rect(screen, (4, 7, 20), shadow, border_radius=12)
-            pygame.draw.rect(screen, fill, rect, border_radius=10)
-            pygame.draw.rect(screen, border, rect, width=2, border_radius=10)
-            pygame.draw.rect(screen, accent, (rect.x + 10, rect.y + 9, 10, rect.height - 18), border_radius=4)
+            pygame.draw.rect(screen, fill, rect, border_radius=14)
+            pygame.draw.rect(screen, border, rect, width=2, border_radius=14)
+            pygame.draw.rect(screen, accent, (rect.x + 11, rect.y + 11, rect.width - 22, 7), border_radius=4)
 
-            chip = pygame.Rect(rect.right - 62, rect.y + 11, 46, rect.height - 22)
+            chip = pygame.Rect(rect.right - 54, rect.y + 13, 36, 28)
             pygame.draw.rect(screen, (14, 26, 60), chip, border_radius=8)
             pygame.draw.rect(screen, (160, 205, 255), chip, width=1, border_radius=8)
 
             idx_text = chip_font.render(str(i + 1), True, (255, 243, 170))
             screen.blit(idx_text, idx_text.get_rect(center=chip.center))
 
-            txt = button_font.render(label, True, (245, 245, 245))
-            txt_rect = txt.get_rect(midleft=(rect.left + 34, rect.centery))
+            txt = card_font.render(label, True, (245, 245, 245))
+            txt_rect = txt.get_rect(midleft=(rect.left + 20, rect.centery + 8))
             screen.blit(txt, txt_rect)
 
+        footer = hint_font.render("ENTER: Launch   ARROWS/WASD: Select   ESC: Exit", True, (196, 227, 255))
+        screen.blit(footer, footer.get_rect(midbottom=(width // 2 + 120, height - 24)))
 
         pygame.display.flip()
         clock.tick(60)
