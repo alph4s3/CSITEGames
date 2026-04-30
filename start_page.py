@@ -11,14 +11,18 @@ BASE_DIR = Path(__file__).resolve().parent
 
 # Label, file path (relative to BASE_DIR)
 GAME_OPTIONS = [
-    ("Archer Platformer", "ArcherPlatformer"),
-    ("Bomberman", "bomberman.py"),
-    ("Jetpack", "JPJR.py"),
+    ("Math Archer", "ArcherPlatformer"),
+    ("Math Bomberman", "bomberman.py"),
+    ("Math Jetpack", "JPJR.py"),
     ("Gravity Runner", "gravityGuy.py"),
     ("Pixel Racer", "pixelRacer.py"),
     ("Mountain Platformer", "platformerr.py"),
-    ("Red Remover", "redremover.py"),
+    ("Math Remover", "redremover.py"),
     ("Fibonacci Adventure", "breh.py"),
+    ("Binary Code Breaker", "binary.py"),
+    ("Logic Challenge", "brainTeaser.py"),
+    ("Catapult Physics", "catapult.py"),
+    ("Escape Room", "room.py"),
 ]
 
 
@@ -76,7 +80,7 @@ def main():
 
     title_font = pygame.font.SysFont("rockwell", 62, bold=True)
     subtitle_font = pygame.font.SysFont("rockwell", 24, bold=True)
-    card_font = pygame.font.SysFont("trebuchet ms", 30, bold=True)
+    card_font = pygame.font.SysFont("trebuchet ms", 24, bold=True)
     body_font = pygame.font.SysFont("trebuchet ms", 20)
     chip_font = pygame.font.SysFont("trebuchet ms", 18, bold=True)
     hint_font = pygame.font.SysFont("consolas", 17, bold=True)
@@ -97,32 +101,44 @@ def main():
     stars = make_stars(width, height)
 
     selected_index = 0
+    page_index = 0
+    page_size = 6
     running = True
     frame = 0
-    cols = 2
 
     while running:
         frame += 1
         mouse_pos = pygame.mouse.get_pos()
+
+        page_count = max(1, math.ceil(len(games) / page_size))
+        page_index = max(0, min(page_index, page_count - 1))
+        start = page_index * page_size
+        page_games = games[start : start + page_size]
+        if not page_games:
+            page_games = games[:page_size]
 
         grid_left = 420
         grid_top = 170
         grid_right_margin = 48
         grid_bottom_margin = 86
         grid_gap = 16
-        rows = max(1, math.ceil(len(games) / cols))
+        cols = 2
+        rows = 3
         grid_width = width - grid_left - grid_right_margin
         grid_height = height - grid_top - grid_bottom_margin
         card_w = (grid_width - grid_gap * (cols - 1)) // cols
         card_h = (grid_height - grid_gap * (rows - 1)) // rows
 
         card_rects = []
-        for i in range(len(games)):
+        for i in range(len(page_games)):
             row = i // cols
             col = i % cols
             x = grid_left + col * (card_w + grid_gap)
             y = grid_top + row * (card_h + grid_gap)
             card_rects.append(pygame.Rect(x, y, card_w, card_h))
+
+        prev_button = pygame.Rect(width - 280, height - 68, 108, 34)
+        next_button = pygame.Rect(width - 156, height - 68, 108, 34)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -130,24 +146,39 @@ def main():
 
             elif event.type == pygame.KEYDOWN:
                 if event.key in (pygame.K_UP, pygame.K_w):
-                    selected_index = (selected_index - cols) % len(games)
+                    selected_index = (selected_index - cols) % len(page_games)
                 elif event.key in (pygame.K_DOWN, pygame.K_s):
-                    selected_index = (selected_index + cols) % len(games)
+                    selected_index = (selected_index + cols) % len(page_games)
                 elif event.key in (pygame.K_LEFT, pygame.K_a):
-                    selected_index = (selected_index - 1) % len(games)
+                    selected_index = (selected_index - 1) % len(page_games)
                 elif event.key in (pygame.K_RIGHT, pygame.K_d):
-                    selected_index = (selected_index + 1) % len(games)
+                    selected_index = (selected_index + 1) % len(page_games)
+                elif event.key in (pygame.K_PAGEUP, pygame.K_q):
+                    page_index = (page_index - 1) % page_count
+                    selected_index = 0
+                elif event.key in (pygame.K_PAGEDOWN, pygame.K_e):
+                    page_index = (page_index + 1) % page_count
+                    selected_index = 0
                 elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-                    launch_game(games[selected_index][1])
+                    launch_game(page_games[selected_index][1])
                     running = False
                 elif event.key == pygame.K_ESCAPE:
                     running = False
 
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if prev_button.collidepoint(event.pos):
+                    page_index = (page_index - 1) % page_count
+                    selected_index = 0
+                    continue
+                if next_button.collidepoint(event.pos):
+                    page_index = (page_index + 1) % page_count
+                    selected_index = 0
+                    continue
+
                 for i, rect in enumerate(card_rects):
                     if rect.collidepoint(event.pos):
                         selected_index = i
-                        launch_game(games[i][1])
+                        launch_game(page_games[i][1])
                         running = False
                         break
 
@@ -183,10 +214,10 @@ def main():
         count_chip.center = (rail.centerx, 176)
         pygame.draw.rect(screen, (24, 44, 78), count_chip, border_radius=12)
         pygame.draw.rect(screen, (115, 191, 250), count_chip, width=1, border_radius=12)
-        count_text = chip_font.render(f"{len(games)} games ready", True, (235, 246, 255))
+        count_text = chip_font.render(f"{len(games)} games across {page_count} pages", True, (235, 246, 255))
         screen.blit(count_text, count_text.get_rect(center=count_chip.center))
 
-        selected_label, selected_path = games[selected_index]
+        selected_label, selected_path = page_games[selected_index]
         info_box = pygame.Rect(56, 228, 306, 342)
         pygame.draw.rect(screen, (20, 35, 65), info_box, border_radius=14)
         pygame.draw.rect(screen, (88, 152, 220), info_box, width=1, border_radius=14)
@@ -200,19 +231,23 @@ def main():
         path_text = chip_font.render(str(selected_path.name), True, (255, 255, 255))
         screen.blit(path_text, (info_box.x + 16, info_box.y + 146))
 
-        tip_lines = [
-            "Arrow keys or WASD to move",
-            "Enter to launch",
-            "Mouse click any card",
-            "Esc to quit launcher",
-        ]
-        ty = info_box.y + 188
-        for line in tip_lines:
-            t = body_font.render(f"- {line}", True, (197, 223, 245))
-            screen.blit(t, (info_box.x + 16, ty))
-            ty += 28
+        nav_title = subtitle_font.render("Controls", True, (123, 221, 255))
+        screen.blit(nav_title, (info_box.x + 16, info_box.y + 188))
 
-        for i, (label, _) in enumerate(games):
+        tip_lines = [
+            "Arrows / WASD: move selection",
+            "Enter: launch selected game",
+            "Q/E or Page Keys: switch pages",
+            "Mouse click: open a game",
+            "Esc: quit launcher",
+        ]
+        ty = info_box.y + 224
+        for line in tip_lines:
+            t = chip_font.render(f"- {line}", True, (197, 223, 245))
+            screen.blit(t, (info_box.x + 16, ty))
+            ty += 24
+
+        for i, (label, _) in enumerate(page_games):
             rect = card_rects[i]
 
             is_hovered = rect.collidepoint(mouse_pos)
@@ -243,11 +278,21 @@ def main():
             screen.blit(idx_text, idx_text.get_rect(center=chip.center))
 
             txt = card_font.render(label, True, (245, 245, 245))
-            txt_rect = txt.get_rect(midleft=(rect.left + 20, rect.centery + 8))
+            txt_rect = txt.get_rect(midleft=(rect.left + 18, rect.centery + 4))
             screen.blit(txt, txt_rect)
 
-        footer = hint_font.render("ENTER: Launch   ARROWS/WASD: Select   ESC: Exit", True, (196, 227, 255))
-        screen.blit(footer, footer.get_rect(midbottom=(width // 2 + 120, height - 24)))
+        pygame.draw.rect(screen, (18, 32, 58), prev_button, border_radius=10)
+        pygame.draw.rect(screen, (110, 170, 235), prev_button, width=2, border_radius=10)
+        pygame.draw.rect(screen, (18, 32, 58), next_button, border_radius=10)
+        pygame.draw.rect(screen, (110, 170, 235), next_button, width=2, border_radius=10)
+
+        prev_text = chip_font.render("Prev Page", True, (235, 246, 255))
+        next_text = chip_font.render("Next Page", True, (235, 246, 255))
+        screen.blit(prev_text, prev_text.get_rect(center=prev_button.center))
+        screen.blit(next_text, next_text.get_rect(center=next_button.center))
+
+        page_text = chip_font.render(f"Page {page_index + 1}/{page_count}", True, (255, 243, 170))
+        screen.blit(page_text, page_text.get_rect(midbottom=(width - 214, height - 76)))
 
         pygame.display.flip()
         clock.tick(60)

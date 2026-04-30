@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0" />
+<meta name="theme-color" content="#08101c" />
+<title>CSITE Logic Duel - Player 2</title>
+<style>
+  /* ------------------------------------------------------------------
+     CSITE LOGIC DUEL — Player 2 client
+     Cyber-neon arcade aesthetic, mobile-first.
+     All offline. No external fonts/assets required.
+  ------------------------------------------------------------------ */
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  :root {
+    --bg-deep:   #08101c;
+    --bg-mid:    #101632;
+    --grid:      #28375f;
+    --panel:     #141a37;
+    --panel-2:   #0e1228;
+    --cyan:      #3cdcfa;
+    --pink:      #ff5ac8;
+    --purple:    #a064ff;
+    --yellow:    #ffd750;
+    --green:     #5af5a0;
+    --red:       #ff5a6e;
+    --white:     #f5f8ff;
+    --gray:      #a5afcd;
+
+    --p1: var(--cyan);
+    --p2: var(--pink);
+  }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+    background: var(--bg-deep);
+    color: var(--white);
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* Animated grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      linear-gradient(180deg, var(--bg-deep) 0%, var(--bg-mid) 100%),
+      repeating-linear-gradient(0deg,  transparent 0 39px, rgba(40,55,95,.35) 39px 40px),
+      repeating-linear-gradient(90deg, transparent 0 39px, rgba(40,55,95,.35) 39px 40px);
+    background-blend-mode: normal, screen, screen;
+    z-index: -2;
+    animation: gridShift 18s linear infinite;
+  }
+  body::after {
+    /* Glow vignette */
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(120% 80% at 50% 0%, transparent 0%, rgba(8,16,28,.85) 70%);
+    z-index: -1;
+    pointer-events: none;
+  }
+  @keyframes gridShift {
+    from { background-position: 0 0, 0 0, 0 0; }
+    to   { background-position: 0 0, 40px 40px, 40px 40px; }
+  }
+
+  /* corner brackets */
+  .corner {
+    position: fixed; width: 22px; height: 22px;
+    border: 2px solid var(--cyan); pointer-events: none; z-index: 5;
+  }
+  .corner.tl { top: 8px; left: 8px;  border-right: 0; border-bottom: 0; }
+  .corner.tr { top: 8px; right: 8px; border-left: 0;  border-bottom: 0; border-color: var(--pink); }
+  .corner.bl { bottom: 8px; left: 8px;  border-right: 0; border-top: 0; border-color: var(--pink); }
+  .corner.br { bottom: 8px; right: 8px; border-left: 0;  border-top: 0; }
+
+  /* App shell */
+  .app {
+    height: 100dvh;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding: 14px;
+    padding-top: max(14px, env(safe-area-inset-top));
+    padding-bottom: max(14px, env(safe-area-inset-bottom));
+  }
+
+  /* ------------- TOP BAR ------------- */
+  .topbar {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .scorebox {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid #2a3768;
+    border-radius: 12px;
+    padding: 8px 10px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    transition: box-shadow .2s, border-color .2s, transform .2s;
+  }
+  .scorebox .label {
+    font-size: 10px; letter-spacing: .15em; font-weight: 700;
+    color: var(--gray); text-transform: uppercase;
+  }
+  .scorebox .score {
+    font-size: 26px; font-weight: 800; line-height: 1;
+    margin-top: 2px;
+  }
+  .scorebox.p1 .label { color: var(--p1); }
+  .scorebox.p2 .label { color: var(--p2); }
+  .scorebox.active {
+    transform: translateY(-2px);
+  }
+  .scorebox.p1.active {
+    border-color: var(--p1);
+    box-shadow: 0 0 24px rgba(60,220,250,.55), inset 0 0 12px rgba(60,220,250,.15);
+  }
+  .scorebox.p2.active {
+    border-color: var(--p2);
+    box-shadow: 0 0 24px rgba(255,90,200,.55), inset 0 0 12px rgba(255,90,200,.15);
+  }
+  .center-info {
+    flex: 1.2;
+    background: var(--panel-2);
+    border: 1px solid #1f2a55;
+    border-radius: 12px;
+    padding: 6px 8px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center;
+  }
+  .center-info .fmt {
+    font-size: 11px; letter-spacing: .18em; color: var(--yellow);
+    font-weight: 700;
+  }
+  .center-info .round {
+    font-size: 14px; font-weight: 700; color: var(--white); margin-top: 2px;
+  }
+
+  /* ------------- CONNECTION PIP ------------- */
+  .conn {
+    position: fixed; top: 14px; left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    background: var(--panel);
+    border: 1px solid #2a3768;
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 10px; letter-spacing: .15em; font-weight: 700;
+    color: var(--gray); text-transform: uppercase;
+    display: flex; align-items: center; gap: 6px;
+    transition: opacity .3s;
+  }
+  .conn .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--red);
+    box-shadow: 0 0 8px currentColor;
+    color: var(--red);
+  }
+  .conn.online .dot { background: var(--green); color: var(--green); }
+  .conn.online { color: var(--green); border-color: rgba(90,245,160,.4); }
+  .conn.hide { opacity: 0; pointer-events: none; }
+
+  /* ------------- MAIN PANEL ------------- */
+  .stage {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    margin-top: 12px;
+    min-height: 0;
+  }
+
+  /* Big banner / heading text */
+  .heading {
+    text-align: center;
+    font-weight: 800;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    line-height: 1.1;
+  }
+  .heading.huge   { font-size: clamp(28px, 8vw, 44px); }
+  .heading.big    { font-size: clamp(20px, 6vw, 30px); }
+  .heading.medium { font-size: clamp(16px, 4.5vw, 22px); }
+  .heading.glow-cyan   { color: var(--cyan);   text-shadow: 0 0 16px rgba(60,220,250,.7); }
+  .heading.glow-pink   { color: var(--pink);   text-shadow: 0 0 16px rgba(255,90,200,.7); }
+  .heading.glow-green  { color: var(--green);  text-shadow: 0 0 16px rgba(90,245,160,.7); }
+  .heading.glow-red    { color: var(--red);    text-shadow: 0 0 16px rgba(255,90,110,.7); }
+  .heading.glow-yellow { color: var(--yellow); text-shadow: 0 0 16px rgba(255,215,80,.6); }
+  .heading.glow-white  { color: var(--white);  text-shadow: 0 0 12px rgba(255,255,255,.4); }
+
+  .subtle { color: var(--gray); font-size: 13px; letter-spacing: .08em; text-align: center; }
+
+  /* Tag / badge */
+  .tag {
+    display: inline-block;
+    padding: 5px 12px;
+    border: 1.5px solid var(--yellow);
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 800;
+    color: var(--yellow);
+    letter-spacing: .25em;
+    text-transform: uppercase;
+    background: rgba(255,215,80,.06);
+  }
+
+  /* Question card */
+  .qcard {
+    background: var(--panel-2);
+    border: 2px solid var(--purple);
+    border-radius: 18px;
+    padding: 18px 16px;
+    margin: 14px 0;
+    text-align: center;
+    font-size: clamp(18px, 5vw, 24px);
+    font-weight: 600;
+    color: var(--white);
+    line-height: 1.35;
+    white-space: pre-line;
+    box-shadow: 0 0 30px rgba(160,100,255,.25),
+                inset 0 0 18px rgba(160,100,255,.08);
+    flex-shrink: 0;
+  }
+
+  /* Answer grid */
+  .answers {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    flex: 1;
+    align-content: stretch;
+  }
+  .ans {
+    background: var(--panel);
+    border: 2px solid #2a3768;
+    border-radius: 14px;
+    color: var(--white);
+    padding: 14px 16px;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: .03em;
+    display: flex; align-items: center; gap: 12px;
+    text-align: left;
+    cursor: pointer;
+    transition: transform .08s, border-color .15s, box-shadow .15s, background .15s;
+    min-height: 64px;
+  }
+  .ans .letter {
+    flex-shrink: 0;
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    background: var(--purple);
+    color: var(--white);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800;
+    font-size: 18px;
+    box-shadow: 0 0 12px rgba(160,100,255,.5);
+  }
+  .ans .text { flex: 1; }
+  .ans:hover, .ans:active {
+    border-color: var(--cyan);
+    box-shadow: 0 0 18px rgba(60,220,250,.35);
+    transform: translateY(-1px);
+  }
+  .ans:active { transform: translateY(0); background: rgba(60,220,250,.08); }
+  .ans.disabled {
+    opacity: .55;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+  .ans.disabled .letter { background: #2a3768; box-shadow: none; }
+  .ans.correct {
+    border-color: var(--green);
+    box-shadow: 0 0 18px rgba(90,245,160,.5);
+    background: rgba(90,245,160,.08);
+  }
+  .ans.correct .letter { background: var(--green); color: #022; }
+  .ans.wrong {
+    border-color: var(--red);
+    box-shadow: 0 0 18px rgba(255,90,110,.5);
+    background: rgba(255,90,110,.08);
+  }
+  .ans.wrong .letter { background: var(--red); color: #200; }
+
+  /* Timer */
+  .timer-wrap {
+    margin-top: 12px;
+    flex-shrink: 0;
+  }
+  .timer {
+    height: 14px;
+    background: var(--panel-2);
+    border: 1px solid #2a3768;
+    border-radius: 999px;
+    overflow: hidden;
+    position: relative;
+  }
+  .timer-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--green), var(--cyan));
+    transition: width .3s linear;
+    box-shadow: 0 0 12px var(--cyan);
+  }
+  .timer-fill.warn { background: linear-gradient(90deg, var(--yellow), var(--pink)); box-shadow: 0 0 12px var(--yellow); }
+  .timer-fill.danger { background: linear-gradient(90deg, var(--red), var(--pink)); box-shadow: 0 0 12px var(--red); animation: pulse .6s infinite; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: .55; }
+  }
+  .timer-label {
+    text-align: center;
+    font-size: 11px;
+    letter-spacing: .25em;
+    margin-top: 6px;
+    color: var(--gray);
+    font-weight: 700;
+  }
+
+  /* Center stage for non-question phases */
+  .center {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    padding: 16px;
+    text-align: center;
+  }
+
+  /* Spinner / dots */
+  .dots {
+    display: inline-flex; gap: 6px; margin-top: 8px;
+  }
+  .dots i {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--cyan);
+    animation: bounce 1.2s infinite ease-in-out;
+    box-shadow: 0 0 10px var(--cyan);
+  }
+  .dots i:nth-child(2) { animation-delay: .15s; background: var(--purple); box-shadow: 0 0 10px var(--purple); }
+  .dots i:nth-child(3) { animation-delay: .30s; background: var(--pink);   box-shadow: 0 0 10px var(--pink); }
+  @keyframes bounce {
+    0%, 80%, 100% { transform: scale(.6); opacity: .4; }
+    40%           { transform: scale(1.0); opacity: 1; }
+  }
+
+  /* Countdown big number */
+  .countdown {
+    font-size: 140px; font-weight: 900;
+    color: var(--yellow);
+    text-shadow: 0 0 30px rgba(255,215,80,.7);
+    line-height: 1; letter-spacing: -.04em;
+    animation: countdownPop .9s ease-out;
+  }
+  @keyframes countdownPop {
+    from { transform: scale(.4); opacity: 0; }
+    50%  { transform: scale(1.12); opacity: 1; }
+    to   { transform: scale(1.0); opacity: 1; }
+  }
+  .countdown.go {
+    color: var(--green); font-size: 88px;
+    text-shadow: 0 0 30px rgba(90,245,160,.8);
+  }
+
+  /* Game over CTAs */
+  .cta-stack {
+    display: flex; flex-direction: column; gap: 10px; width: 100%;
+    margin-top: 8px;
+  }
+  .cta {
+    border-radius: 14px;
+    padding: 14px 18px;
+    font-weight: 800;
+    font-size: 16px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    text-align: center;
+    border: 2px solid;
+  }
+  .cta.cyan   { color: var(--cyan);   border-color: var(--cyan);   background: rgba(60,220,250,.08);  }
+  .cta.green  { color: var(--green);  border-color: var(--green);  background: rgba(90,245,160,.08);  }
+  .cta.pink   { color: var(--pink);   border-color: var(--pink);   background: rgba(255,90,200,.08);  }
+  .cta.yellow { color: var(--yellow); border-color: var(--yellow); background: rgba(255,215,80,.08);  }
+
+  .scoreline {
+    font-size: 26px; font-weight: 800;
+    color: var(--white);
+    letter-spacing: .15em;
+  }
+  .scoreline .me  { color: var(--p2); }
+  .scoreline .vs  { color: var(--gray); margin: 0 12px; }
+  .scoreline .opp { color: var(--p1); }
+
+  /* result big text */
+  .result-icon {
+    font-size: 80px;
+    line-height: 1;
+  }
+
+  /* Hide helper */
+  .hidden { display: none !important; }
+
+  /* Toasts (transient messages) */
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--panel); border: 1px solid var(--cyan);
+    color: var(--cyan); padding: 10px 18px;
+    border-radius: 999px; font-size: 12px; font-weight: 700;
+    letter-spacing: .15em; text-transform: uppercase;
+    opacity: 0; transition: opacity .3s, transform .3s;
+    z-index: 100;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(-6px); }
+</style>
+</head>
+<body>
+
+<!-- Decorative corner brackets -->
+<div class="corner tl"></div>
+<div class="corner tr"></div>
+<div class="corner bl"></div>
+<div class="corner br"></div>
+
+<!-- Connection status -->
+<div id="conn" class="conn">
+  <span class="dot"></span>
+  <span id="connText">CONNECTING</span>
+</div>
+
+<div class="app">
+
+  <!-- Top score bar -->
+  <div class="topbar" id="topbar">
+    <div class="scorebox p1" id="p1Box">
+      <div class="label">PLAYER 1</div>
+      <div class="score" id="p1Score">0</div>
+    </div>
+    <div class="center-info">
+      <div class="fmt" id="fmt">BEST OF 5</div>
+      <div class="round" id="roundLabel">ROUND 0</div>
+    </div>
+    <div class="scorebox p2" id="p2Box">
+      <div class="label">PLAYER 2 (YOU)</div>
+      <div class="score" id="p2Score">0</div>
+    </div>
+  </div>
+
+  <!-- Stage area (changes based on phase) -->
+  <div class="stage" id="stage">
+    <!-- Filled in dynamically -->
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Try local cached socket.io first; fallback to CDN if phone has data -->
+<script src="/socket.io.min.js"
+        onerror="(function(){var s=document.createElement('script');s.src='https://cdn.socket.io/4.7.5/socket.io.min.js';s.onerror=function(){document.getElementById('connText').textContent='NO SOCKET.IO';};document.head.appendChild(s);})()"></script>
+
+<script>
+/* =====================================================================
+   CSITE LOGIC DUEL — Player 2 client logic
+===================================================================== */
+
+let socket = null;
+let lastPhase = null;
+let lastQuestionId = null;   // Used to detect new questions
+let answered = false;        // Has the player answered the current question
+let selectedIdx = -1;        // Their selection (for showing feedback)
+let serverState = null;
+let resultUntil = 0;
+
+const ROUND_DURATION = 30;   // Must match server
+
+const $ = id => document.getElementById(id);
+const stage = $('stage');
+
+function showToast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+function connect() {
+  function init() {
+    if (typeof io === 'undefined') {
+      // Try again shortly in case fallback CDN is still loading
+      setTimeout(init, 400);
+      return;
+    }
+    socket = io({
+      reconnection: true,
+      reconnectionDelay: 800,
+      reconnectionDelayMax: 2500,
+    });
+
+    socket.on('connect', () => {
+      $('conn').classList.add('online');
+      $('connText').textContent = 'CONNECTED';
+      socket.emit('p2_join');
+      // Fade out connection pip after a moment
+      setTimeout(() => $('conn').classList.add('hide'), 1800);
+    });
+
+    socket.on('disconnect', () => {
+      $('conn').classList.remove('online', 'hide');
+      $('connText').textContent = 'RECONNECTING';
+    });
+
+    socket.on('state', (data) => {
+      serverState = data;
+      render();
+    });
+  }
+  init();
+}
+
+function submitAnswer(idx) {
+  if (answered || !socket || !socket.connected) return;
+  if (!serverState || serverState.phase !== 'QUESTION') return;
+  if (serverState.current_player !== 2) return;
+  answered = true;
+  selectedIdx = idx;
+  socket.emit('p2_answer', { idx });
+  render(); // re-render to show selection feedback
+}
+
+/* ---------- RENDERING ---------- */
+
+function render() {
+  if (!serverState) return;
+  const s = serverState;
+
+  // Update top bar
+  $('p1Score').textContent = s.p1_score;
+  $('p2Score').textContent = s.p2_score;
+  $('fmt').textContent = (s.bo_target === 4) ? 'BEST OF 7' : 'BEST OF 5';
+  $('roundLabel').textContent = s.phase === 'WAITING' || s.phase === 'MENU'
+        ? 'WAITING' : `ROUND ${s.round || 0}`;
+
+  // Active player highlight
+  $('p1Box').classList.toggle('active',
+      s.phase === 'QUESTION' && s.current_player === 1);
+  $('p2Box').classList.toggle('active',
+      s.phase === 'QUESTION' && s.current_player === 2);
+
+  // Phase change handling: detect new question to reset answered state
+  if (s.phase === 'QUESTION') {
+    const qId = s.round + ':' + (s.question ? s.question.q : '');
+    if (qId !== lastQuestionId) {
+      lastQuestionId = qId;
+      answered = false;
+      selectedIdx = -1;
+    }
+  } else if (s.phase !== 'QUESTION' && s.phase !== 'ROUND_RESULT') {
+    lastQuestionId = null;
+    answered = false;
+    selectedIdx = -1;
+  }
+
+  // Render the right stage view
+  switch (s.phase) {
+    case 'MENU':         renderWaitHost(); break;
+    case 'WAITING':      renderWaitStart(); break;
+    case 'COUNTDOWN':    renderCountdown(); break;
+    case 'QUESTION':     renderQuestion(); break;
+    case 'ROUND_RESULT': renderResult(); break;
+    case 'GAME_OVER':    renderGameOver(); break;
+    default:             renderWaitHost();
+  }
+}
+
+function renderWaitHost() {
+  stage.innerHTML = `
+    <div class="center">
+      <div class="heading big glow-cyan">WAITING FOR HOST</div>
+      <div class="subtle">The booth operator hasn't started a duel yet.</div>
+      <div class="dots"><i></i><i></i><i></i></div>
+    </div>
+  `;
+}
+
+function renderWaitStart() {
+  stage.innerHTML = `
+    <div class="center">
+      <div class="heading huge glow-green">CONNECTED!</div>
+      <div class="subtle">Player 2 ready. Get into position.</div>
+      <div class="heading medium glow-pink" style="margin-top:18px">
+        Waiting for the host to start the duel...
+      </div>
+      <div class="dots"><i></i><i></i><i></i></div>
+    </div>
+  `;
+}
+
+function renderCountdown() {
+  const n = serverState.countdown;
+  const display = (n && n > 0) ? n : 'GO!';
+  const cls = (n && n > 0) ? '' : 'go';
+  const cp = serverState.current_player;
+  const whoColor = cp === 1 ? 'glow-cyan' : 'glow-pink';
+  const whoText  = cp === 1 ? 'PLAYER 1 STARTS' : 'YOU START FIRST!';
+  stage.innerHTML = `
+    <div class="center">
+      <div class="heading big ${whoColor}">${whoText}</div>
+      <div class="countdown ${cls}" key="${n}">${display}</div>
+      <div class="subtle">Get ready!</div>
+    </div>
+  `;
+}
+
+function renderQuestion() {
+  const q = serverState.question;
+  if (!q) { renderWaitHost(); return; }
+
+  const myTurn = (serverState.current_player === 2);
+  const timeLeft = serverState.time_left || 0;
+  const pct = Math.max(0, Math.min(1, timeLeft / ROUND_DURATION));
+  let timerCls = '';
+  if (pct < 0.5)  timerCls = 'warn';
+  if (pct < 0.25) timerCls = 'danger';
+
+  const headingHtml = myTurn
+    ? `<div class="heading huge glow-pink">YOUR TURN</div>
+       <div class="subtle" style="margin-top:-4px">Tap the correct answer below</div>`
+    : `<div class="heading big glow-cyan">PLAYER 1's TURN</div>
+       <div class="subtle" style="margin-top:-4px">Watch and learn — your turn next!</div>`;
+
+  const optsHtml = q.options.map((opt, i) => {
+    const letter = String.fromCharCode(65 + i);
+    let cls = 'ans';
+    if (!myTurn || answered) cls += ' disabled';
+    if (answered && selectedIdx === i) {
+      // We don't know yet if correct (server tells us in result phase),
+      // so just dim them. The result phase will show full feedback.
+      cls += ' disabled';
+    }
+    return `
+      <button class="${cls}" data-idx="${i}">
+        <div class="letter">${letter}</div>
+        <div class="text">${escapeHtml(opt)}</div>
+      </button>`;
+  }).join('');
+
+  stage.innerHTML = `
+    <div style="text-align:center; margin-bottom: 4px">
+      <span class="tag">${escapeHtml(q.type)}</span>
+    </div>
+    ${headingHtml}
+    <div class="qcard">${escapeHtml(q.q)}</div>
+    <div class="answers">${optsHtml}</div>
+    <div class="timer-wrap">
+      <div class="timer">
+        <div class="timer-fill ${timerCls}" style="width:${(pct * 100).toFixed(1)}%"></div>
+      </div>
+      <div class="timer-label">${Math.ceil(timeLeft)}s</div>
+    </div>
+  `;
+
+  // Attach click handlers
+  stage.querySelectorAll('.ans').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = parseInt(btn.dataset.idx, 10);
+      submitAnswer(i);
+    });
+  });
+}
+
+function renderResult() {
+  const r = serverState.last_result;
+  if (!r) { renderWaitHost(); return; }
+  const q = serverState.question;
+  const correctIdx = r.answer;
+
+  const wasMyAnswer = (r.player === 2);
+  let bigText, bigCls, icon, subMsg;
+
+  if (r.timeout) {
+    bigText = "TIME'S UP!";
+    bigCls  = 'glow-red';
+    icon    = '⏱';
+    subMsg  = wasMyAnswer
+        ? "You ran out of time. Point to Player 1."
+        : "Player 1 ran out of time. Point to you!";
+  } else if (r.correct) {
+    bigText = wasMyAnswer ? "YOU GOT IT!" : "P1 IS CORRECT";
+    bigCls  = 'glow-green';
+    icon    = '✓';
+    subMsg  = wasMyAnswer ? "+1 point for YOU"
+                          : "+1 point for Player 1";
+  } else {
+    bigText = wasMyAnswer ? "WRONG!" : "P1 GOT IT WRONG";
+    bigCls  = 'glow-red';
+    icon    = '✗';
+    subMsg  = wasMyAnswer
+        ? "Point goes to Player 1."
+        : "Point goes to YOU!";
+  }
+
+  const optsHtml = q.options.map((opt, i) => {
+    const letter = String.fromCharCode(65 + i);
+    let cls = 'ans disabled';
+    if (i === correctIdx) cls += ' correct';
+    else if (i === r.selected && r.selected !== correctIdx && !r.timeout) cls += ' wrong';
+    return `
+      <div class="${cls}">
+        <div class="letter">${letter}</div>
+        <div class="text">${escapeHtml(opt)}</div>
+      </div>`;
+  }).join('');
+
+  stage.innerHTML = `
+    <div class="center" style="gap:10px; padding-top: 6px;">
+      <div class="result-icon" style="color:var(--${r.correct ? 'green' : 'red'})">${icon}</div>
+      <div class="heading huge ${bigCls}">${bigText}</div>
+      <div class="subtle">${escapeHtml(subMsg)}</div>
+    </div>
+    <div class="answers" style="flex:0; margin-top:0">
+      ${optsHtml}
+    </div>
+    <div class="subtle" style="margin-top:12px">Next round starting...</div>
+  `;
+}
+
+function renderGameOver() {
+  const won = serverState.winner === 2;
+  const banner = won ? "YOU WIN!" : "PLAYER 1 WINS";
+  const cls = won ? 'glow-pink' : 'glow-cyan';
+
+  stage.innerHTML = `
+    <div class="center" style="gap:14px; padding: 8px;">
+      <div class="heading huge ${cls}">${banner}</div>
+      <div class="scoreline">
+        <span class="opp">${serverState.p1_score}</span>
+        <span class="vs">VS</span>
+        <span class="me">${serverState.p2_score}</span>
+      </div>
+      <div class="heading medium glow-yellow" style="margin-top:8px">
+        LOVED THE CHALLENGE?
+      </div>
+      <div class="cta-stack">
+        <div class="cta cyan">LEARN HOW TO CODE</div>
+        <div class="cta green">MASTER LOGIC — JOIN CSITE</div>
+        <div class="cta pink">ENROLL IN CSITE NOW!</div>
+      </div>
+      <div class="subtle" style="margin-top:8px">
+        Visit our booth for more info!<br>
+        Host can press <b>PLAY AGAIN</b> to start a new duel.
+      </div>
+    </div>
+  `;
+}
+
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/* Local timer animation: re-render every 250ms during QUESTION phase
+   so the timer bar updates smoothly between server pushes. */
+setInterval(() => {
+  if (!serverState) return;
+  if (serverState.phase === 'QUESTION') {
+    // Decrement time_left locally for smooth bar
+    serverState.time_left = Math.max(0, (serverState.time_left || 0) - 0.25);
+    renderQuestion();
+    // Re-attach handlers happen inside renderQuestion()
+  }
+}, 250);
+
+/* Prevent iOS bounce / pull-to-refresh on the question buttons */
+document.addEventListener('touchmove', function(e) {
+  if (e.target.closest('.ans')) return;
+}, { passive: true });
+
+/* Boot */
+connect();
+renderWaitHost();
+</script>
+</body>
+</html>

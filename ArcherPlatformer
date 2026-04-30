@@ -35,6 +35,27 @@ screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Math Archer")
 clock = pygame.time.Clock()
 
+
+def load_sprite_asset(*names, size=None):
+    """Load the first available sprite asset from the workspace."""
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    for name in names:
+        path = os.path.join(base_dir, name)
+        if not os.path.exists(path):
+            continue
+        try:
+            image = pygame.image.load(path).convert_alpha()
+            if size is not None:
+                image = pygame.transform.smoothscale(image, size)
+            return image
+        except pygame.error:
+            return None
+    return None
+
+
+GRIFFIN_SPRITE = load_sprite_asset("Griffin.png", size=(64, 64))
+FEATHER_SPRITE = load_sprite_asset("Feather.png", size=(28, 18))
+
 # ═══════════════════════════════════════════════════════════════════
 #  COLOR PALETTE
 # ═══════════════════════════════════════════════════════════════════
@@ -252,16 +273,19 @@ def _build_pixel_vibe_overlay(w, h):
     overlay = pygame.Surface((w, h), pygame.SRCALPHA)
     # Stronger scanlines and pixel grid for a visible retro feel.
     for y in range(0, h, 2):
-        pygame.draw.line(overlay, (0, 0, 0, 34), (0, y), (w, y))
+        pygame.draw.line(overlay, (0, 0, 0, 48), (0, y), (w, y))
     for y in range(1, h, 4):
-        pygame.draw.line(overlay, (0, 0, 0, 18), (0, y), (w, y))
+        pygame.draw.line(overlay, (0, 0, 0, 28), (0, y), (w, y))
     for x in range(0, w, 3):
-        pygame.draw.line(overlay, (0, 0, 0, 8), (x, 0), (x, h))
+        pygame.draw.line(overlay, (0, 0, 0, 14), (x, 0), (x, h))
+    # Add a faint vertical metro accent every 48 pixels for a stronger 'metro' feel.
+    for x in range(0, w, 48):
+        pygame.draw.line(overlay, (10, 20, 24, 24), (x, 0), (x, h), 2)
     # Highlight speckles in a checker rhythm for a pixel-grid feel.
     for y in range(0, h, 4):
         x_start = (y // 4) % 2
         for x in range(x_start, w, 4):
-            overlay.set_at((x, y), (255, 255, 255, 16))
+            overlay.set_at((x, y), (255, 255, 255, 26))
     return overlay
 
 
@@ -270,20 +294,27 @@ _PIXEL_VIBE_OVERLAY = _build_pixel_vibe_overlay(WIDTH, HEIGHT)
 
 def _build_pixel_tint_overlay(w, h):
     tint = pygame.Surface((w, h), pygame.SRCALPHA)
-    tint.fill((16, 32, 20, 22))
+    tint.fill((18, 40, 24, 34))
     for y in range(0, h, 10):
-        pygame.draw.rect(tint, (0, 35, 12, 18), (0, y, w, 4))
+        pygame.draw.rect(tint, (0, 40, 16, 28), (0, y, w, 4))
     return tint
 
 
 def _build_pixel_vignette_overlay(w, h):
     vig = pygame.Surface((w, h), pygame.SRCALPHA)
-    for i in range(20):
-        alpha = min(95, 10 + i * 5)
-        rect = pygame.Rect(i * 3, i * 2, w - i * 6, h - i * 4)
+    # Stronger soft vignette to focus the gameplay area.
+    for i in range(28):
+        alpha = min(140, 8 + i * 6)
+        rect = pygame.Rect(i * 2, i * 1, w - i * 4, h - i * 2)
         if rect.width <= 0 or rect.height <= 0:
             break
         pygame.draw.rect(vig, (0, 0, 0, alpha), rect, width=2)
+    # subtle inner darken
+    inner = pygame.Surface((w, h), pygame.SRCALPHA)
+    for r in range(1, 6):
+        pygame.draw.ellipse(inner, (0, 0, 0, 6), (r * 8, r * 6, w - r * 16, h - r * 12))
+    inner.set_alpha(40)
+    vig.blit(inner, (0, 0))
     return vig
 
 
@@ -575,16 +606,21 @@ class Arrow:
             c = (int(200 * a), int(170 * a), int(80 * a))
             pygame.draw.circle(surf, c, (int(tx), int(ty)), 1)
         angle = math.atan2(self.vy, self.vx)
-        ln = 20
-        ex = self.x - math.cos(angle) * ln
-        ey = self.y - math.sin(angle) * ln
-        pygame.draw.line(surf, BROWN_LIGHT, (int(ex), int(ey)),
-                         (int(self.x), int(self.y)), 2)
-        for da in [0.35, -0.35]:
-            fx = ex + math.cos(angle + math.pi + da) * 6
-            fy = ey + math.sin(angle + math.pi + da) * 6
-            pygame.draw.line(surf, RED_DIM, (int(ex), int(ey)), (int(fx), int(fy)), 1)
-        pygame.draw.circle(surf, WHITE, (int(self.x), int(self.y)), 2)
+        if FEATHER_SPRITE is not None:
+            feather = pygame.transform.rotate(FEATHER_SPRITE, -math.degrees(angle))
+            rect = feather.get_rect(center=(int(self.x), int(self.y)))
+            surf.blit(feather, rect)
+        else:
+            ln = 20
+            ex = self.x - math.cos(angle) * ln
+            ey = self.y - math.sin(angle) * ln
+            pygame.draw.line(surf, BROWN_LIGHT, (int(ex), int(ey)),
+                             (int(self.x), int(self.y)), 2)
+            for da in [0.35, -0.35]:
+                fx = ex + math.cos(angle + math.pi + da) * 6
+                fy = ey + math.sin(angle + math.pi + da) * 6
+                pygame.draw.line(surf, RED_DIM, (int(ex), int(ey)), (int(fx), int(fy)), 1)
+            pygame.draw.circle(surf, WHITE, (int(self.x), int(self.y)), 2)
 
     @property
     def hitbox(self):
@@ -715,25 +751,35 @@ class Player:
     def draw(self, surf, mx, my):
         ix, iy = int(self.x), int(self.y)
         cx_i = int(self.cx)
-        # Legs
-        la = math.sin(self.anim_t) * 5 if abs(self.vx) > 0.3 else 0
-        lf = (ix + 6 + int(la), iy + self.H)
-        rf = (ix + self.W - 6 - int(la), iy + self.H)
-        pygame.draw.line(surf, RED_DIM, (ix + 7, iy + self.H - 10), lf, 3)
-        pygame.draw.line(surf, RED_DIM, (ix + self.W - 7, iy + self.H - 10), rf, 3)
-        pygame.draw.circle(surf, BROWN, lf, 3)
-        pygame.draw.circle(surf, BROWN, rf, 3)
-        # Body
-        br = pygame.Rect(ix + 3, iy + 8, self.W - 6, self.H - 18)
-        pygame.draw.rect(surf, RED, br, border_radius=5)
-        pygame.draw.rect(surf, BROWN, (br.x, br.bottom - 5, br.w, 4))
-        pygame.draw.circle(surf, GOLD, (br.centerx, br.bottom - 3), 3)
-        # Head
-        hx, hy = ix + self.W // 2, iy + 6
-        pygame.draw.circle(surf, SKIN, (hx, hy), 8)
-        pygame.draw.arc(surf, GREEN_DIM, (hx - 9, hy - 10, 18, 14), 0, math.pi, 3)
-        eye_d = 1 if mx > cx_i else -1
-        pygame.draw.circle(surf, BLACK, (hx + eye_d * 3, hy - 1), 2)
+        if GRIFFIN_SPRITE is not None:
+            facing = -1 if mx >= cx_i else 1
+            sprite = GRIFFIN_SPRITE
+            if facing < 0:
+                sprite = pygame.transform.flip(sprite, True, False)
+            bob = int(math.sin(self.anim_t) * 2) if abs(self.vx) > 0.3 else 0
+            rect = sprite.get_rect(center=(ix + self.W // 2, iy + self.H // 2 + bob - 2))
+            surf.blit(sprite, rect)
+        else:
+            # Legs
+            la = math.sin(self.anim_t) * 5 if abs(self.vx) > 0.3 else 0
+            lf = (ix + 6 + int(la), iy + self.H)
+            rf = (ix + self.W - 6 - int(la), iy + self.H)
+            pygame.draw.line(surf, RED_DIM, (ix + 7, iy + self.H - 10), lf, 3)
+            pygame.draw.line(surf, RED_DIM, (ix + self.W - 7, iy + self.H - 10), rf, 3)
+            pygame.draw.circle(surf, BROWN, lf, 3)
+            pygame.draw.circle(surf, BROWN, rf, 3)
+            # Body
+            br = pygame.Rect(ix + 3, iy + 8, self.W - 6, self.H - 18)
+            pygame.draw.rect(surf, RED, br, border_radius=5)
+            pygame.draw.rect(surf, BROWN, (br.x, br.bottom - 5, br.w, 4))
+            pygame.draw.circle(surf, GOLD, (br.centerx, br.bottom - 3), 3)
+            # Head
+            hx, hy = ix + self.W // 2, iy + 6
+            pygame.draw.circle(surf, SKIN, (hx, hy), 8)
+            pygame.draw.arc(surf, GREEN_DIM, (hx - 9, hy - 10, 18, 14), 0, math.pi, 3)
+            eye_d = 1 if mx > cx_i else -1
+            pygame.draw.circle(surf, BLACK, (hx + eye_d * 3, hy - 1), 2)
+
         # Bow
         ang = self.aim_angle
         bcx = self.cx + math.cos(ang) * 15
