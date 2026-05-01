@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arena - Host</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <section id="lobby" class="screen">
+    <header class="brand">
+      <span class="logo">⚔️</span>
+      <span>ARENA</span>
+    </header>
+
+    <div class="lobby-grid">
+      <div class="card qr-card">
+        <h2>Scan to Join</h2>
+        <div id="qrcode" class="qr"></div>
+        <div class="join-info">
+          <div class="room-code-row">
+            <span class="label">Room code</span>
+            <span id="room-code" class="room-code">— — — —</span>
+          </div>
+          <div class="join-url" id="join-url-row">
+            <span class="label">URL</span>
+            <span id="join-url" class="url">…</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card players-card">
+        <h2>Players <span class="muted" id="player-count">(0/4)</span></h2>
+        <div id="players-list">
+          <div class="empty">Waiting for players to scan the QR code…</div>
+        </div>
+        <button id="start-btn" class="primary-btn" disabled>Start Game</button>
+        <p class="hint">First player to <strong>10 coins</strong> wins.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="game" class="screen hidden">
+    <div class="hud" id="hud"></div>
+    <div class="canvas-wrap">
+      <canvas id="canvas" width="1280" height="720"></canvas>
+    </div>
+  </section>
+
+  <section id="game-over" class="screen hidden">
+    <div class="card center-card">
+      <div class="trophy">🏆</div>
+      <h1 id="winner-text">Player wins!</h1>
+      <div id="final-scores" class="final-scores"></div>
+      <button id="back-to-lobby" class="primary-btn">Back to Lobby</button>
+    </div>
+  </section>
+
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <script src="host.js"></script>
+</body>
+</html>

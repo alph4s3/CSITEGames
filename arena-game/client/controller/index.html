@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Lock viewport - no zoom, fits notches -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0b132b">
+  <title>Arena Controller</title>
+  <link rel="stylesheet" href="/controller/style.css">
+</head>
+<body>
+  <!-- LOBBY: room code + name entry -->
+  <section id="lobby" class="screen">
+    <div class="brand">
+      <span class="logo">⚔️</span>
+      <span>ARENA</span>
+    </div>
+    <h1>Join Game</h1>
+    <div class="form">
+      <label for="room-input">Room Code</label>
+      <input id="room-input" type="text" maxlength="4" placeholder="XXXX"
+             autocomplete="off" autocapitalize="characters" autocorrect="off"
+             inputmode="text">
+      <label for="name-input">Your Name</label>
+      <input id="name-input" type="text" maxlength="12" placeholder="Player"
+             autocomplete="off">
+      <button id="join-btn" class="primary-btn">Join</button>
+      <div id="error-msg" class="error"></div>
+    </div>
+  </section>
+
+  <!-- WAITING: joined, waiting for host to start -->
+  <section id="waiting" class="screen hidden">
+    <div class="player-badge big">
+      <div class="color-dot" id="color-dot-1"></div>
+      <div class="player-name-text" id="name-display-1"></div>
+    </div>
+    <div class="status-area">
+      <div class="dots-loader"><span></span><span></span><span></span></div>
+      <h2>Waiting for host…</h2>
+      <p>Hold tight — the game starts when the host taps Start.</p>
+    </div>
+  </section>
+
+  <!-- PLAY: live controls -->
+  <section id="play" class="screen hidden">
+    <header class="play-bar">
+      <div class="player-badge">
+        <div class="color-dot" id="color-dot-2"></div>
+        <div class="player-name-text" id="name-display-2"></div>
+      </div>
+      <div class="score-pill">
+        <span class="coin">🪙</span>
+        <span id="score">0</span>
+      </div>
+    </header>
+
+    <div class="controls">
+      <div class="dpad">
+        <button id="btn-left"  class="ctrl-btn dir">◀</button>
+        <button id="btn-right" class="ctrl-btn dir">▶</button>
+      </div>
+      <button id="btn-jump" class="ctrl-btn jump">JUMP</button>
+    </div>
+  </section>
+
+  <!-- GAMEOVER -->
+  <section id="gameover" class="screen hidden">
+    <div class="trophy">🏆</div>
+    <h2 id="gameover-title">Game Over</h2>
+    <p id="gameover-text"></p>
+    <p class="hint">Wait for the host to start a new round.</p>
+  </section>
+
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="/controller/controller.js"></script>
+</body>
+</html>
